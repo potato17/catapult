@@ -3,6 +3,7 @@
 # found in the LICENSE file.
 
 import fnmatch
+import os
 import re
 import sys
 import json
@@ -12,6 +13,7 @@ from telemetry.internal.platform import android_device
 from telemetry.internal.util import binary_manager
 from telemetry.testing import browser_test_context
 from telemetry.testing import serially_executed_browser_test_case
+from telemetry.internal.browser import browser_finder
 
 from py_utils import discover
 import typ
@@ -193,6 +195,7 @@ def LoadTestCasesToBeRun(
 def _CreateTestArgParsers():
   parser = typ.ArgumentParser(discovery=False, reporting=True, running=True)
   parser.add_argument('test', type=str, help='Name of the test suite to run')
+
   parser.add_argument(
       '--test-filter', type=str, default='', action='store',
       help='Run only tests whose names match the given filter regexp.')
@@ -255,7 +258,7 @@ def RunTests(args):
     PrintTelemetryHelp()
     return parser.exit_status
   binary_manager.InitDependencyManager(options.client_configs)
-
+  not_using_typ_expectation = len(options.expectations_files) == 0
   for start_dir in options.start_dirs:
     modules_to_classes = discover.DiscoverClasses(
         start_dir,
@@ -285,6 +288,7 @@ def RunTests(args):
   context.finder_options = ProcessCommandLineOptions(
       test_class, options, extra_args)
   context.test_class = test_class
+  context.expectations_files = options.expectations_files
   test_times = None
   if options.read_abbreviated_json_results_from:
     with open(options.read_abbreviated_json_results_from, 'r') as f:
@@ -301,14 +305,17 @@ def RunTests(args):
     context.test_case_ids_to_run.add(t.id())
   context.Freeze()
   browser_test_context._global_test_context = context
+  possible_browser = browser_finder.FindBrowser(context.finder_options)
 
   # Setup typ runner.
   runner = typ.Runner()
-
+  options.tags.extend(test_class.GenerateTags(context.finder_options,
+                                              possible_browser))
   runner.context = context
   runner.setup_fn = _SetUpProcess
   runner.teardown_fn = _TearDownProcess
-
+  runner.args.expectations_files = options.expectations_files
+  runner.args.tags = options.tags
   runner.args.jobs = options.jobs
   runner.args.metadata = options.metadata
   runner.args.passthrough = options.passthrough
@@ -339,7 +346,34 @@ def RunTests(args):
   except KeyboardInterrupt:
     print >> sys.stderr, "interrupted, exiting"
     ret = 130
+  finally:
+    if (options.write_full_results_to and
+        os.path.exists(options.write_full_results_to) and
+        not_using_typ_expectation):
+      # Set expectation of all skipped tests to skip to keep the test behavior
+      # the same as when typ doesn't support test expectation.
+      # (also see crbug.com/904019) for why this work around is needed)
+      # TODO(crbug.com/698902): remove this once gpu tests are converted to use
+      # typ's expectation.
+      _SetSkippedTestExpectationsToSkip(options.write_full_results_to)
   return ret
+
+
+def _SetSkippedTestExpectationsToSkip(full_results_file_path):
+  with open(full_results_file_path) as f:
+    results = json.load(f)
+  root_node = results['tests']
+  queue = [root_node]
+  while queue:
+    curr_node = queue.pop()
+    if 'actual' in curr_node:
+      if curr_node['actual'] == 'SKIP':
+        curr_node['expected'] = 'SKIP'
+    else:
+      for v in curr_node.values():
+        queue.append(v)
+  with open(full_results_file_path, 'w') as f:
+    json.dump(results, f, indent=2)
 
 
 def _SetUpProcess(child, context):

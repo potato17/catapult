@@ -2,7 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-"""Finds android browsers that can be controlled by telemetry."""
+"""Finds android browsers that can be started and controlled by telemetry."""
 
 import contextlib
 import logging
@@ -24,7 +24,6 @@ from telemetry.core import platform
 from telemetry.internal.backends import android_browser_backend_settings
 from telemetry.internal.backends.chrome import android_browser_backend
 from telemetry.internal.backends.chrome import chrome_startup_args
-from telemetry.internal.backends.chrome import gpu_compositing_checker
 from telemetry.internal.browser import browser
 from telemetry.internal.browser import possible_browser
 from telemetry.internal.platform import android_device
@@ -208,9 +207,21 @@ class PossibleAndroidBrowser(possible_browser.PossibleBrowser):
       finally:
         self._flag_changer = None
 
+  def _GetBrowserStartupUrl(self):
+    if self._browser_options.startup_url:
+      return self._browser_options.startup_url
+    elif self._browser_options.profile_dir:
+      return None
+    else:
+      # If we have no existing tabs start with a blank page since default
+      # startup with the NTP can lead to race conditions with Telemetry
+      return 'about:blank'
+
   def Create(self, clear_caches=True):
     """Launch the browser on the device and return a Browser object."""
-    return self._GetBrowserInstance(existing=False, clear_caches=clear_caches)
+    return self._GetBrowserInstance(
+        existing=False, clear_caches=clear_caches,
+        startup_url=self._GetBrowserStartupUrl())
 
   def FindExistingBrowser(self):
     """Find a browser running on the device and bind a Browser object to it.
@@ -223,7 +234,7 @@ class PossibleAndroidBrowser(possible_browser.PossibleBrowser):
     """
     return self._GetBrowserInstance(existing=True, clear_caches=False)
 
-  def _GetBrowserInstance(self, existing, clear_caches):
+  def _GetBrowserInstance(self, existing, clear_caches, startup_url=None):
     browser_backend = android_browser_backend.AndroidBrowserBackend(
         self._platform_backend, self._browser_options,
         self.browser_directory, self.profile_directory,
@@ -232,13 +243,9 @@ class PossibleAndroidBrowser(possible_browser.PossibleBrowser):
     if clear_caches:
       self._ClearCachesOnStart()
     try:
-      returned_browser = browser.Browser(
+      return browser.Browser(
           browser_backend, self._platform_backend, startup_args=(),
-          find_existing=existing)
-      if self._browser_options.assert_gpu_compositing:
-        gpu_compositing_checker.AssertGpuCompositingEnabled(
-            returned_browser.GetSystemInfo())
-      return returned_browser
+          startup_url=startup_url, find_existing=existing)
     except Exception:
       exc_info = sys.exc_info()
       logging.error(

@@ -2,11 +2,14 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import pandas  # pylint: disable=import-error
+import json
+import logging
 import sqlite3
 
+import pandas  # pylint: disable=import-error
+
 from common import utils
-from soundwave import dashboard_api
+from services import dashboard_service
 from soundwave import pandas_sqlite
 from soundwave import studies
 from soundwave import tables
@@ -14,25 +17,30 @@ from soundwave import worker_pool
 
 
 def _FetchBugsWorker(args):
-  api = dashboard_api.PerfDashboardCommunicator(args)
   con = sqlite3.connect(args.database_file, timeout=10)
 
   def Process(bug_id):
-    bugs = tables.bugs.DataFrameFromJson(api.GetBugData(bug_id))
+    bugs = tables.bugs.DataFrameFromJson([dashboard_service.Bugs(bug_id)])
     pandas_sqlite.InsertOrReplaceRecords(con, 'bugs', bugs)
 
   worker_pool.Process = Process
 
 
 def FetchAlertsData(args):
-  api = dashboard_api.PerfDashboardCommunicator(args)
+  params = {
+      'test_suite': args.benchmark,
+      'min_timestamp': utils.DaysAgoToTimestamp(args.days)
+  }
+  if args.sheriff != 'all':
+    params['sheriff'] = args.sheriff
+
   with tables.DbSession(args.database_file) as con:
     # Get alerts.
     num_alerts = 0
     bug_ids = set()
     # TODO: This loop may be slow when fetching thousands of alerts, needs a
     # better progress indicator.
-    for data in api.IterAlertData(args.benchmark, args.sheriff, args.days):
+    for data in dashboard_service.IterAlerts(**params):
       alerts = tables.alerts.DataFrameFromJson(data)
       pandas_sqlite.InsertOrReplaceRecords(con, 'alerts', alerts)
       num_alerts += len(alerts)
@@ -74,41 +82,46 @@ def _IterStaleTestPaths(con, test_paths):
 
 
 def _FetchTimeseriesWorker(args):
-  api = dashboard_api.PerfDashboardCommunicator(args)
   con = sqlite3.connect(args.database_file, timeout=10)
+  min_timestamp = utils.DaysAgoToTimestamp(args.days)
 
   def Process(test_path):
-    data = api.GetTimeseries(test_path, days=args.days)
-    if data:
-      timeseries = tables.timeseries.DataFrameFromJson(data)
-      pandas_sqlite.InsertOrReplaceRecords(con, 'timeseries', timeseries)
+    try:
+      if isinstance(test_path, tables.timeseries.Key):
+        params = test_path.AsApiParams()
+        params['min_timestamp'] = min_timestamp
+        data = dashboard_service.Timeseries2(**params)
+      else:
+        data = dashboard_service.Timeseries(test_path, days=args.days)
+    except KeyError:
+      logging.info('Timeseries not found: %s', test_path)
+      return
+
+    timeseries = tables.timeseries.DataFrameFromJson(test_path, data)
+    pandas_sqlite.InsertOrReplaceRecords(con, 'timeseries', timeseries)
 
   worker_pool.Process = Process
 
 
-def _ReadTestPathsFromFile(filename):
-  with open(filename, 'rU') as f:
-    for line in f:
-      line = line.strip()
-      if line and not line.startswith('#'):
-        yield line
+def _ReadTimeseriesFromFile(filename):
+  with open(filename, 'r') as f:
+    data = json.load(f)
+  return [tables.timeseries.Key.FromDict(ts) for ts in data]
 
 
 def FetchTimeseriesData(args):
   def _MatchesAllFilters(test_path):
     return all(f in test_path for f in args.filters)
 
-  api = dashboard_api.PerfDashboardCommunicator(args)
   with tables.DbSession(args.database_file) as con:
     # Get test_paths.
     if args.benchmark is not None:
-      api = dashboard_api.PerfDashboardCommunicator(args)
-      test_paths = api.dashboard.ListTestPaths(
+      test_paths = dashboard_service.ListTestPaths(
           args.benchmark, sheriff=args.sheriff)
     elif args.input_file is not None:
-      test_paths = list(_ReadTestPathsFromFile(args.input_file))
+      test_paths = _ReadTimeseriesFromFile(args.input_file)
     elif args.study is not None:
-      test_paths = list(args.study.IterTestPaths(api))
+      test_paths = list(args.study.IterTestPaths())
     else:
       raise ValueError('No source for test paths specified')
 

@@ -2,16 +2,15 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import datetime
 import json
 import math
 import numbers
 import random
-import uuid
 
 from tracing.value.diagnostics import diagnostic
 from tracing.value.diagnostics import diagnostic_ref
 from tracing.value.diagnostics import reserved_infos
+from tracing.value.diagnostics import unmergeable_diagnostic_set
 
 
 try:
@@ -357,338 +356,6 @@ class RunningStatistics(object):
     return result
 
 
-class DateRange(diagnostic.Diagnostic):
-  __slots__ = '_range',
-
-  def __init__(self, ms):
-    super(DateRange, self).__init__()
-    self._range = Range()
-    self._range.AddValue(ms)
-
-  def __eq__(self, other):
-    if not isinstance(other, DateRange):
-      return False
-    return self._range == other._range
-
-  def __hash__(self):
-    return id(self)
-
-  @property
-  def min_date(self):
-    return datetime.datetime.fromtimestamp(self._range.min / 1000)
-
-  @property
-  def max_date(self):
-    return datetime.datetime.fromtimestamp(self._range.max / 1000)
-
-  @property
-  def min_timestamp(self):
-    return self._range.min
-
-  @property
-  def max_timestamp(self):
-    return self._range.max
-
-  @property
-  def duration_ms(self):
-    return self._range.duration
-
-  def __str__(self):
-    min_date = self.min_date.isoformat().replace('T', ' ')[:19]
-    if self.duration_ms == 0:
-      return min_date
-    max_date = self.max_date.isoformat().replace('T', ' ')[:19]
-    return min_date + ' - ' + max_date
-
-  def _AsDictInto(self, dct):
-    dct['min'] = self._range.min
-    if self.duration_ms == 0:
-      return
-    dct['max'] = self._range.max
-
-  @staticmethod
-  def FromDict(dct):
-    dr = DateRange(dct['min'])
-    if 'max' in dct:
-      dr._range.AddValue(dct['max'])
-    return dr
-
-  def CanAddDiagnostic(self, other_diagnostic):
-    return isinstance(other_diagnostic, DateRange)
-
-  def AddDiagnostic(self, other_diagnostic):
-    self._range.AddRange(other_diagnostic._range)
-
-class HistogramRef(object):
-  __slots__ = '_guid',
-
-  def __init__(self, guid):
-    self._guid = guid
-
-  @property
-  def guid(self):
-    return self._guid
-
-
-class RelatedNameMap(diagnostic.Diagnostic):
-  __slots__ = '_map',
-
-  def __init__(self):
-    super(RelatedNameMap, self).__init__()
-    self._map = {}
-
-  def __eq__(self, other):
-    if not isinstance(other, RelatedNameMap):
-      return False
-    if set(self._map) != set(other._map):
-      return False
-    for key, name in self._map.items():
-      if name != other.Get(key):
-        return False
-    return True
-
-  def __hash__(self):
-    return id(self)
-
-  def CanAddDiagnostic(self, other):
-    return isinstance(other, RelatedNameMap)
-
-  def AddDiagnostic(self, other):
-    for key, name in other._map.items():
-      existing = self.Get(key)
-      if existing is None:
-        self.Set(key, name)
-      elif existing != name:
-        raise ValueError('Histogram names differ: "%s" != "%s"' % (
-            existing, name))
-
-  def Get(self, key):
-    return self._map.get(key)
-
-  def Set(self, key, name):
-    self._map[key] = name
-
-  def __iter__(self):
-    for key, name in self._map.items():
-      yield key, name
-
-  def Values(self):
-    return self._map.values()
-
-  def _AsDictInto(self, dct):
-    dct['names'] = dict(self._map)
-
-  @staticmethod
-  def FromDict(dct):
-    names = RelatedNameMap()
-    for key, name in dct['names'].items():
-      names.Set(key, name)
-    return names
-
-
-
-class RelatedHistogramMap(diagnostic.Diagnostic):
-  __slots__ = '_histograms_by_name',
-
-  def __init__(self):
-    super(RelatedHistogramMap, self).__init__()
-    self._histograms_by_name = {}
-
-  def Get(self, name):
-    return self._histograms_by_name.get(name)
-
-  def Set(self, name, hist):
-    assert isinstance(hist, (Histogram, HistogramRef)), (
-        'Expected Histogram or HistogramRef, found %s: "%r"',
-        (type(hist).__name__, hist))
-    self._histograms_by_name[name] = hist
-
-  def Add(self, hist):
-    self.Set(hist.name, hist)
-
-  def __len__(self):
-    return len(self._histograms_by_name)
-
-  def __iter__(self):
-    for name, hist in self._histograms_by_name.items():
-      yield name, hist
-
-  def Resolve(self, histograms, required=False):
-    for name, hist in self:
-      if not isinstance(hist, HistogramRef):
-        continue
-
-      guid = hist.guid
-      hist = histograms.LookupHistogram(guid)
-      if isinstance(hist, Histogram):
-        self._histograms_by_name[name] = hist
-      else:
-        assert not required, ('Missing required Histogram %s' % guid)
-
-  def _AsDictInto(self, d):
-    d['values'] = {}
-    for name, hist in self:
-      d['values'][name] = hist.guid
-
-  @staticmethod
-  def FromDict(d):
-    result = RelatedHistogramMap()
-    for name, guid in d['values'].items():
-      result.Set(name, HistogramRef(guid))
-    return result
-
-
-class RelatedHistogramBreakdown(RelatedHistogramMap):
-  __slots__ = '_color_scheme',
-
-  def __init__(self):
-    super(RelatedHistogramBreakdown, self).__init__()
-    self._color_scheme = None
-
-  def Set(self, name, hist):
-    if not isinstance(hist, HistogramRef):
-      assert isinstance(hist, Histogram), (
-          'Expected Histogram, found %s: "%r"' % (type(hist).__name__, hist))
-      # All Histograms must have the same unit.
-      for _, other_hist in self:
-        expected_unit = other_hist.unit
-        assert expected_unit == hist.unit, (
-            'Units mismatch ' + expected_unit + ' != ' + hist.unit)
-        break  # Only the first Histogram needs to be checked.
-    super(RelatedHistogramBreakdown, self).Set(name, hist)
-
-  def _AsDictInto(self, d):
-    RelatedHistogramMap._AsDictInto(self, d)
-    if self._color_scheme:
-      d['colorScheme'] = self._color_scheme
-
-  @staticmethod
-  def FromDict(d):
-    result = RelatedHistogramBreakdown()
-    for name, guid in d['values'].items():
-      result.Set(name, HistogramRef(guid))
-    if 'colorScheme' in d:
-      result._color_scheme = d['colorScheme']
-    return result
-
-
-class TagMap(diagnostic.Diagnostic):
-  __slots__ = '_tags_to_story_names',
-
-  def __init__(self, info):
-    super(TagMap, self).__init__()
-    self._tags_to_story_names = dict(
-        (k, set(v)) for k, v in info.get(
-            'tagsToStoryNames', {}).items())
-
-  def __eq__(self, other):
-    if not isinstance(other, TagMap):
-      return False
-
-    return self.tags_to_story_names == other.tags_to_story_names
-
-  def __hash__(self):
-    return id(self)
-
-  def _AsDictInto(self, d):
-    d['tagsToStoryNames'] = dict(
-        (k, list(v)) for k, v in self.tags_to_story_names.items())
-
-  @staticmethod
-  def FromDict(d):
-    return TagMap(d)
-
-  @property
-  def tags_to_story_names(self):
-    return self._tags_to_story_names
-
-  def AddTagAndStoryDisplayName(self, tag, story_display_name):
-    if not tag in self.tags_to_story_names:
-      self.tags_to_story_names[tag] = set()
-    self.tags_to_story_names[tag].add(story_display_name)
-
-  def CanAddDiagnostic(self, other_diagnostic):
-    return isinstance(other_diagnostic, TagMap)
-
-  def AddDiagnostic(self, other_diagnostic):
-    for name, story_display_names in\
-        other_diagnostic.tags_to_story_names.items():
-      if not name in self.tags_to_story_names:
-        self.tags_to_story_names[name] = set()
-
-      for t in story_display_names:
-        self.tags_to_story_names[name].add(t)
-
-
-class RelatedEventSet(diagnostic.Diagnostic):
-  __slots__ = '_events_by_stable_id',
-
-  def __init__(self):
-    super(RelatedEventSet, self).__init__()
-    self._events_by_stable_id = {}
-
-  def Add(self, event):
-    self._events_by_stable_id[event['stableId']] = event
-
-  def __len__(self):
-    return len(self._events_by_stable_id)
-
-  def __iter__(self):
-    for event in self._events_by_stable_id.values():
-      yield event
-
-  @staticmethod
-  def FromDict(d):
-    result = RelatedEventSet()
-    for event in d['events']:
-      result.Add(event)
-    return result
-
-  def _AsDictInto(self, d):
-    d['events'] = [event for event in self]
-
-
-class UnmergeableDiagnosticSet(diagnostic.Diagnostic):
-  __slots__ = '_diagnostics',
-
-  def __init__(self, diagnostics):
-    super(UnmergeableDiagnosticSet, self).__init__()
-    self._diagnostics = diagnostics
-
-  def __len__(self):
-    return len(self._diagnostics)
-
-  def __iter__(self):
-    for diag in self._diagnostics:
-      yield diag
-
-  def CanAddDiagnostic(self, unused_other_diagnostic):
-    return True
-
-  def AddDiagnostic(self, other_diagnostic):
-    if isinstance(other_diagnostic, UnmergeableDiagnosticSet):
-      self._diagnostics.extend(other_diagnostic._diagnostics)
-      return
-    for diag in self:
-      if diag.CanAddDiagnostic(other_diagnostic):
-        diag.AddDiagnostic(other_diagnostic)
-        return
-    self._diagnostics.append(other_diagnostic)
-
-  def _AsDictInto(self, d):
-    d['diagnostics'] = [d.AsDictOrReference() for d in self]
-
-  @staticmethod
-  def FromDict(dct):
-    def RefOrDiagnostic(d):
-      if isinstance(d, StringTypes):
-        return diagnostic_ref.DiagnosticRef(d)
-      return diagnostic.Diagnostic.FromDict(d)
-
-    return UnmergeableDiagnosticSet(
-        [RefOrDiagnostic(d) for d in dct['diagnostics']])
-
-
 class DiagnosticMap(dict):
   __slots__ = '_allow_reserved_names',
 
@@ -706,7 +373,8 @@ class DiagnosticMap(dict):
                              diagnostic_ref.DiagnosticRef)):
       raise TypeError('diag must be Diagnostic or DiagnosticRef')
     if (not self._allow_reserved_names and
-        not isinstance(diag, UnmergeableDiagnosticSet) and
+        not isinstance(diag,
+                       unmergeable_diagnostic_set.UnmergeableDiagnosticSet) and
         not isinstance(diag, diagnostic_ref.DiagnosticRef)):
       expected_type = reserved_infos.GetTypeForName(name)
       if expected_type and diag.__class__.__name__ != expected_type:
@@ -724,7 +392,10 @@ class DiagnosticMap(dict):
     for name, diagnostic_dict in dct.items():
       if isinstance(diagnostic_dict, StringTypes):
         self[name] = diagnostic_ref.DiagnosticRef(diagnostic_dict)
-      else:
+      elif diagnostic_dict['type'] not in [
+          'RelatedHistogramMap', 'RelatedHistogramBreakdown']:
+        # Ignore RelatedHistograms.
+        # TODO(benjhayden): Forget about RelatedHistograms in 2019 Q2.
         self[name] = diagnostic.Diagnostic.FromDict(diagnostic_dict)
 
   def ResolveSharedDiagnostics(self, histograms, required=False):
@@ -753,7 +424,7 @@ class DiagnosticMap(dict):
       if my_diagnostic.CanAddDiagnostic(other_diagnostic):
         my_diagnostic.AddDiagnostic(other_diagnostic)
         continue
-      self[name] = UnmergeableDiagnosticSet([
+      self[name] = unmergeable_diagnostic_set.UnmergeableDiagnosticSet([
           my_diagnostic, other_diagnostic])
 
 
@@ -873,7 +544,6 @@ DEFAULT_SUMMARY_OPTIONS = {
 
 class Histogram(object):
   __slots__ = (
-      '_guid',
       '_bin_boundaries_dict',
       '_description',
       '_name',
@@ -882,7 +552,6 @@ class Histogram(object):
       '_num_nans',
       '_running',
       '_sample_values',
-      '_short_name',
       '_summary_options',
       '_unit',
       '_bins',
@@ -895,8 +564,6 @@ class Histogram(object):
     if bin_boundaries is None:
       base_unit = unit.split('_')[0]
       bin_boundaries = DEFAULT_BOUNDARIES_FOR_UNIT[base_unit]
-
-    self._guid = None
 
     # Serialize bin boundaries here instead of holding a reference to it in case
     # it is modified.
@@ -914,7 +581,6 @@ class Histogram(object):
     self._num_nans = 0
     self._running = None
     self._sample_values = []
-    self._short_name = None
     self._summary_options = dict(DEFAULT_SUMMARY_OPTIONS)
     self._summary_options['percentile'] = []
     self._unit = unit
@@ -951,21 +617,6 @@ class Histogram(object):
     return self._name
 
   @property
-  def short_name(self):
-    return self._short_name
-
-  @property
-  def guid(self):
-    if self._guid is None:
-      self._guid = str(uuid.uuid4())
-    return self._guid
-
-  @guid.setter
-  def guid(self, g):
-    assert self._guid is None, self._guid
-    self._guid = g
-
-  @property
   def bins(self):
     return self._bins
 
@@ -977,9 +628,6 @@ class Histogram(object):
   def FromDict(dct):
     boundaries = HistogramBinBoundaries.FromDict(dct.get('binBoundaries'))
     hist = Histogram(dct['name'], dct['unit'], boundaries)
-    hist.guid = dct['guid']
-    if 'shortName' in dct:
-      hist._short_name = dct['shortName']
     if 'description' in dct:
       hist._description = dct['description']
     if 'diagnostics' in dct:
@@ -1133,12 +781,6 @@ class Histogram(object):
         self._bins[i] = mybin = HistogramBin(mybin.range)
       mybin.AddBin(hbin)
 
-    merged_from = self.diagnostics.get(reserved_infos.MERGED_FROM.name)
-    if merged_from is None:
-      merged_from = RelatedHistogramMap()
-      self.diagnostics[reserved_infos.MERGED_FROM.name] = merged_from
-    merged_from.Set(len(merged_from), other)
-
     self.diagnostics.Merge(other.diagnostics)
 
   def CustomizeSummaryOptions(self, options):
@@ -1186,11 +828,9 @@ class Histogram(object):
     return results
 
   def AsDict(self):
-    dct = {'name': self.name, 'unit': self.unit, 'guid': self.guid}
+    dct = {'name': self.name, 'unit': self.unit}
     if self._bin_boundaries_dict is not None:
       dct['binBoundaries'] = self._bin_boundaries_dict
-    if self._short_name:
-      dct['shortName'] = self._short_name
     if self._description:
       dct['description'] = self._description
     if len(self.diagnostics):

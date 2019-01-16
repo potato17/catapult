@@ -7,6 +7,7 @@
 import json
 import logging
 import sys
+import uuid
 
 from google.appengine.ext import ndb
 
@@ -227,7 +228,6 @@ def _AddRowsFromData(params, revision, parent_test, legacy_parent_tests):
 @ndb.tasklet
 def _AddHistogramFromData(params, revision, test_key, internal_only):
   data_dict = params['data']
-  guid = data_dict['guid']
   diagnostics = params.get('diagnostics')
   new_guids_to_existing_diagnostics = yield ProcessDiagnostics(
       diagnostics, revision, test_key, internal_only)
@@ -242,7 +242,7 @@ def _AddHistogramFromData(params, revision, test_key, internal_only):
   data = hs.GetFirstHistogram().AsDict()
 
   entity = histogram.Histogram(
-      id=guid, data=data, test=test_key, revision=revision,
+      id=str(uuid.uuid4()), data=data, test=test_key, revision=revision,
       internal_only=internal_only)
   yield entity.put_async()
 
@@ -330,9 +330,12 @@ def _MakeRowDict(revision, test_path, tracing_histogram, stat_name=None):
 
   for diag_name, annotation in DIAGNOSTIC_NAMES_TO_ANNOTATION_NAMES.iteritems():
     revision_info = tracing_histogram.diagnostics.get(diag_name)
-    value = list(revision_info) if revision_info else None
-    if not value:
+    if not revision_info:
       continue
+    if diag_name == reserved_infos.REVISION_TIMESTAMPS.name:
+      value = [revision_info.min_timestamp]
+    else:
+      value = list(revision_info)
     _CheckRequest(
         len(value) == 1,
         'RevisionInfo fields must contain at most one revision')
@@ -373,7 +376,7 @@ def _AddStdioUri(name, link_list, row_dict):
   if isinstance(link_list, list):
     row_dict['supplemental_columns'][name] = '[%s](%s)' % tuple(link_list)
   # Support busted format until infra changes roll
-  elif isinstance(link_list, str):
+  elif isinstance(link_list, basestring):
     row_dict['supplemental_columns'][name] = link_list
 
 

@@ -44,7 +44,6 @@ SUITE_LEVEL_SPARSE_DIAGNOSTIC_NAMES = set([
 
 HISTOGRAM_LEVEL_SPARSE_DIAGNOSTIC_NAMES = set([
     reserved_infos.DEVICE_IDS.name,
-    reserved_infos.RELATED_NAMES.name,
     reserved_infos.STORIES.name,
     reserved_infos.STORYSET_REPEATS.name,
     reserved_infos.STORY_TAGS.name,
@@ -94,7 +93,18 @@ class AddHistogramsProcessHandler(request_handler.RequestHandler):
 
 class AddHistogramsHandler(api_request_handler.ApiRequestHandler):
 
-  def PrivilegedPost(self):
+  def _CheckUser(self):
+    self._CheckIsInternalUser()
+
+  def Post(self):
+    if utils.IsDevAppserver():
+      # Don't require developers to zip the body.
+      # In prod, the data will be written to cloud storage and processed on the
+      # taskqueue, so the caller will not see any errors. In dev_appserver,
+      # process the data immediately so the caller will see errors.
+      ProcessHistogramSet(json.loads(self.request.body))
+      return
+
     with timing.WallTimeLogger('decompress'):
       try:
         data_str = self.request.body
@@ -163,9 +173,6 @@ def ProcessHistogramSet(histogram_dicts):
   with timing.WallTimeLogger('hs.ImportDicts'):
     histograms.ImportDicts(histogram_dicts)
 
-  with timing.WallTimeLogger('hs.ResolveRelatedHistograms'):
-    histograms.ResolveRelatedHistograms()
-
   with timing.WallTimeLogger('hs.DeduplicateDiagnostics'):
     histograms.DeduplicateDiagnostics()
 
@@ -200,10 +207,10 @@ def ProcessHistogramSet(histogram_dicts):
 
   with timing.WallTimeLogger('ComputeRevision'):
     suite_key = utils.TestKey('%s/%s/%s' % (master, bot, benchmark))
-
     logging.info('Suite: %s', suite_key.id())
 
     revision = ComputeRevision(histograms)
+    logging.info('Revision: %s', revision)
 
     internal_only = graph_data.Bot.GetInternalOnlySync(master, bot)
 

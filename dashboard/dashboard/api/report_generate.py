@@ -10,13 +10,10 @@ from dashboard.models import report_template
 
 class ReportGenerateHandler(api_request_handler.ApiRequestHandler):
 
-  def _AllowAnonymous(self):
-    return True
+  def _CheckUser(self):
+    pass
 
-  def PrivilegedPost(self):
-    return self.UnprivilegedPost()
-
-  def UnprivilegedPost(self):
+  def Post(self):
     revisions = self.request.get('revisions', None)
     if revisions is None:
       raise api_request_handler.BadRequestError
@@ -30,7 +27,6 @@ class ReportGenerateHandler(api_request_handler.ApiRequestHandler):
       template_id = int(self.request.get('id'))
     except ValueError:
       raise api_request_handler.BadRequestError
-
     try:
       report = report_template.GetReport(template_id, revisions)
     except AssertionError:
@@ -38,4 +34,5 @@ class ReportGenerateHandler(api_request_handler.ApiRequestHandler):
       raise api_request_handler.NotFoundError
     if report is None:
       raise api_request_handler.NotFoundError
+
     return report

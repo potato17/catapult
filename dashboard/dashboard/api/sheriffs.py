@@ -8,12 +8,9 @@ from dashboard.models import sheriff
 
 class SheriffsHandler(api_request_handler.ApiRequestHandler):
 
-  def _AllowAnonymous(self):
-    return True
+  def _CheckUser(self):
+    pass
 
-  def PrivilegedPost(self):
-    return self.UnprivilegedPost()
-
-  def UnprivilegedPost(self):
+  def Post(self):
     sheriff_keys = sheriff.Sheriff.query().fetch(keys_only=True)
     return [key.string_id() for key in sheriff_keys]

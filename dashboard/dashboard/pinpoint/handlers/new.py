@@ -19,7 +19,12 @@ _ERROR_TAGS_DICT = 'Tags must be a dict of key/value string pairs.'
 class New(api_request_handler.ApiRequestHandler):
   """Handler that cooks up a fresh Pinpoint job."""
 
-  def PrivilegedPost(self):
+  def _CheckUser(self):
+    self._CheckIsLoggedIn()
+    if not utils.IsTryjobUser():
+      raise api_request_handler.ForbiddenError()
+
+  def Post(self):
     job = _CreateJob(self.request)
     job.Start()
 
@@ -152,6 +157,7 @@ def _GenerateQuests(arguments):
         raise ValueError('Unknown quest: "%s"' % quest)
       quest_classes.append(getattr(quest_module, quest))
   else:
+    # TODO: Require users to specify a list of quests. Do not imply defaults.
     target = arguments.get('target')
     if target in ('performance_test_suite', 'performance_webview_test_suite',
                   'telemetry_perf_tests', 'telemetry_perf_webview_tests'):
@@ -164,10 +170,7 @@ def _GenerateQuests(arguments):
   quest_instances = []
   for quest_class in quest_classes:
     # FromDict() performs input validation.
-    quest = quest_class.FromDict(arguments)
-    if not quest:
-      break
-    quest_instances.append(quest)
+    quest_instances.append(quest_class.FromDict(arguments))
 
   return quest_instances
 

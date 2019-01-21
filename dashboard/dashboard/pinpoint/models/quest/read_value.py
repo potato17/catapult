@@ -16,10 +16,6 @@ from tracing.value.diagnostics import diagnostic_ref
 from tracing.value.diagnostics import reserved_infos
 
 
-_PERFORMANCE_TESTS = ('performance_test_suite',
-                      'performance_webview_test_suite')
-
-
 class ReadValueError(Exception):
 
   pass
@@ -50,14 +46,8 @@ class ReadHistogramsJsonValue(quest.Quest):
   def metric(self):
     return self._hist_name
 
-  def Start(self, change, isolate_server=None, isolate_hash=None):
+  def Start(self, change, isolate_server, isolate_hash):
     del change
-
-    # TODO(dtu): Remove after data migration.
-    # isolate_server and isolate_hash are required arguments.
-    assert isolate_hash
-    if not isolate_server:
-      isolate_server = 'https://isolateserver.appspot.com'
 
     return _ReadHistogramsJsonValueExecution(
         self._results_filename, self._hist_name, self._tir_label,
@@ -68,14 +58,10 @@ class ReadHistogramsJsonValue(quest.Quest):
     benchmark = arguments.get('benchmark')
     if not benchmark:
       raise TypeError('Missing "benchmark" argument.')
-    if arguments.get('target') in _PERFORMANCE_TESTS:
-      if _IsWindows(arguments):
-        results_filename = ntpath.join(benchmark, 'perf_results.json')
-      else:
-        results_filename = posixpath.join(benchmark, 'perf_results.json')
+    if _IsWindows(arguments):
+      results_filename = ntpath.join(benchmark, 'perf_results.json')
     else:
-      # TODO: Remove this hack when all builders build performance_test_suite.
-      results_filename = 'chartjson-output.json'
+      results_filename = posixpath.join(benchmark, 'perf_results.json')
 
     chart = arguments.get('chart')
     tir_label = arguments.get('tir_label')
@@ -108,16 +94,10 @@ class _ReadHistogramsJsonValueExecution(execution.Execution):
     } for trace_url in self._trace_urls]
 
   def _Poll(self):
-    # TODO(dtu): Remove after data migration.
-    if not hasattr(self, '_isolate_server'):
-      self._isolate_server = 'https://isolateserver.appspot.com'
-    if not hasattr(self, '_results_filename'):
-      self._results_filename = 'chartjson-output.json'
     histogram_dicts = _RetrieveOutputJson(
         self._isolate_server, self._isolate_hash, self._results_filename)
     histograms = histogram_set.HistogramSet()
     histograms.ImportDicts(histogram_dicts)
-    histograms.ResolveRelatedHistograms()
 
     histograms_by_path = self._CreateHistogramSetByTestPathDict(histograms)
     self._trace_urls = self._FindTraceUrls(histograms)
@@ -220,14 +200,8 @@ class ReadGraphJsonValue(quest.Quest):
   def metric(self):
     return self._chart
 
-  def Start(self, change, isolate_server=None, isolate_hash=None):
+  def Start(self, change, isolate_server, isolate_hash):
     del change
-
-    # TODO(dtu): Remove after data migration.
-    # isolate_server and isolate_hash are required arguments.
-    assert isolate_hash
-    if not isolate_server:
-      isolate_server = 'https://isolateserver.appspot.com'
 
     return _ReadGraphJsonValueExecution(
         self._chart, self._trace, isolate_server, isolate_hash)
@@ -235,13 +209,13 @@ class ReadGraphJsonValue(quest.Quest):
   @classmethod
   def FromDict(cls, arguments):
     chart = arguments.get('chart')
+    if not chart:
+      raise TypeError('Missing "chart" argument.')
+
     trace = arguments.get('trace')
-    if not (chart or trace):
-      return None
-    if chart and not trace:
-      raise TypeError('"chart" specified but no "trace" given.')
-    if trace and not chart:
-      raise TypeError('"trace" specified but no "chart" given.')
+    if not trace:
+      raise TypeError('Missing "trace" argument.')
+
     return cls(chart, trace)
 
 
@@ -255,15 +229,9 @@ class _ReadGraphJsonValueExecution(execution.Execution):
     self._isolate_hash = isolate_hash
 
   def _AsDict(self):
-    # TODO(dtu): Remove after data migration.
-    if not hasattr(self, '_isolate_server'):
-      self._isolate_server = 'https://isolateserver.appspot.com'
     return {'isolate_server': self._isolate_server}
 
   def _Poll(self):
-    # TODO(dtu): Remove after data migration.
-    if not hasattr(self, '_isolate_server'):
-      self._isolate_server = 'https://isolateserver.appspot.com'
     graphjson = _RetrieveOutputJson(
         self._isolate_server, self._isolate_hash, 'chartjson-output.json')
 
@@ -279,7 +247,10 @@ class _ReadGraphJsonValueExecution(execution.Execution):
 
 
 def _IsWindows(arguments):
-  for dimension in arguments.get('dimensions', []):
+  dimensions = arguments.get('dimensions', ())
+  if isinstance(dimensions, basestring):
+    dimensions = json.loads(dimensions)
+  for dimension in dimensions:
     if dimension['key'] == 'os' and dimension['value'].startswith('Win'):
       return True
   return False
@@ -293,10 +264,3 @@ def _RetrieveOutputJson(isolate_server, isolate_hash, filename):
     raise ReadValueError("The test didn't produce %s." % filename)
   output_json_isolate_hash = output_files[filename]['h']
   return json.loads(isolate.Retrieve(isolate_server, output_json_isolate_hash))
-
-
-def _GetStoryFromHistogram(hist):
-  stories = hist.diagnostics.get(reserved_infos.STORIES.name)
-  if stories and len(stories) == 1:
-    return list(stories)[0]
-  return None

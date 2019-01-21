@@ -43,26 +43,6 @@ class AlertsHandler(api_request_handler.ApiRequestHandler):
     http.request = NewRequest
     return http
 
-  def _FileBug(self):
-    if not utils.IsValidSheriffUser():
-      raise api_request_handler.BadRequestError(
-          'Only chromium.org accounts may file bugs')
-
-    owner = self.request.get('owner')
-    cc = self.request.get('cc')
-    if owner and not owner.endswith('@chromium.org'):
-      raise api_request_handler.BadRequestError(
-          'Owner email address must end with @chromium.org')
-
-    summary = self.request.get('summary')
-    description = self.request.get('description')
-    labels = self.request.get_all('label')
-    components = self.request.get_all('component')
-    keys = self.request.get_all('key')
-    http = utils.ServiceAccountHttp()  # TODO use self._AuthorizedHttp()
-    return file_bug.FileBug(
-        http, keys, summary, description, labels, components, owner, cc)
-
   def _RecentBugs(self):
     if not utils.IsValidSheriffUser():
       raise api_request_handler.BadRequestError(
@@ -144,9 +124,7 @@ class AlertsHandler(api_request_handler.ApiRequestHandler):
           response['next_cursor'] = next_cursor.urlsafe()
       else:
         list_type = args[0]
-        if list_type == 'new_bug':
-          return self._FileBug()
-        elif list_type == 'recent_bugs':
+        if list_type == 'recent_bugs':
           return self._RecentBugs()
         elif list_type == 'existing_bug':
           return self._ExistingBug()

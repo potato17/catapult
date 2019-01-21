@@ -14,35 +14,6 @@ tr.exportTo('cp', () => {
     'Chromium Perf Sheriff',
   ];
 
-  class NewBugRequest extends cp.RequestBase {
-    constructor(options) {
-      super(options);
-      this.method_ = 'POST';
-      this.body_ = new FormData();
-      for (const key of options.alertKeys) this.body_.append('key', key);
-      for (const label of options.labels) this.body_.append('label', label);
-      for (const component of options.components) {
-        this.body_.append('component', component);
-      }
-      this.body_.set('summary', options.summary);
-      this.body_.set('description', options.description);
-      this.body_.set('owner', options.owner);
-      this.body_.set('cc', options.cc);
-    }
-
-    get url_() {
-      return '/api/alerts/new_bug';
-    }
-
-    async localhostResponse_() {
-      return {bug_id: 123450000 + tr.b.GUID.allocateSimple()};
-    }
-
-    postProcess_(json) {
-      return json.bug_id;
-    }
-  }
-
   class ExistingBugRequest extends cp.RequestBase {
     constructor(options) {
       super(options);
@@ -630,7 +601,7 @@ tr.exportTo('cp', () => {
       const alertKeys = new Set(selectedAlerts.map(a => a.key));
       let bugId;
       try {
-        const request = new NewBugRequest({
+        const request = new cp.NewBugRequest({
           alertKeys,
           ...state.newBug,
           labels: state.newBug.labels.filter(

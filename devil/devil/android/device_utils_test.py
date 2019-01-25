@@ -22,6 +22,7 @@ from devil import devil_env
 from devil.android import device_errors
 from devil.android import device_signal
 from devil.android import device_utils
+from devil.android.ndk import abis
 from devil.android.sdk import adb_wrapper
 from devil.android.sdk import intent
 from devil.android.sdk import keyevent
@@ -31,9 +32,6 @@ from devil.utils import mock_calls
 
 with devil_env.SysPath(devil_env.PYMOCK_PATH):
   import mock  # pylint: disable=import-error
-
-ARM32_ABI = 'armeabi-v7a'
-ARM64_ABI = 'arm64-v8a'
 
 def Process(name, pid, ppid='1'):
   return device_utils.ProcessInfo(name=name, pid=pid, ppid=ppid)
@@ -60,7 +58,7 @@ class _MockApkHelper(object):
     self.path = path
     self.package_name = package_name
     self.perms = perms
-    self.abis = [ARM32_ABI]
+    self.abis = [abis.ARM]
 
   def GetPackageName(self):
     return self.package_name
@@ -480,7 +478,7 @@ class DeviceUtils_GetPackageArchitectureTest(DeviceUtilsTest):
             'dumpsys package com.android.chrome | grep -F primaryCpuAbi'),
         ['  primaryCpuAbi=armeabi-v7a']):
       self.assertEquals(
-          ARM32_ABI,
+          abis.ARM,
           self.device.GetPackageArchitecture('com.android.chrome'))
 
   def test_GetPackageArchitecture_notExists(self):
@@ -2611,6 +2609,35 @@ class DeviceUtilsGetSetEnforce(DeviceUtilsTest):
       self.device.SetEnforce(enabled='0')  # Not recommended but it works!
 
 
+class DeviceUtilsGetWebViewUpdateServiceDumpTest(DeviceUtilsTest):
+
+  def testGetWebViewUpdateServiceDump_success(self):
+    with self.patch_call(self.call.device.build_version_sdk,
+                         return_value=version_codes.OREO):
+      with self.assertCall(self.call.adb.Shell('dumpsys webviewupdate'),
+                           'Fallback logic enabled: true\n'
+                           'Current WebView package (name, version): '
+                           '(com.google.android.webview, 61.0.3163.98)'):
+        update = self.device.GetWebViewUpdateServiceDump()
+        self.assertEqual(True, update['FallbackLogicEnabled'])
+        self.assertEqual('com.google.android.webview',
+                         update['CurrentWebViewPackage'])
+
+  def testGetWebViewUpdateServiceDump_missingkey(self):
+    with self.patch_call(self.call.device.build_version_sdk,
+                         return_value=version_codes.OREO):
+      with self.assertCall(self.call.adb.Shell('dumpsys webviewupdate'),
+                           'Fallback logic enabled: true'):
+        with self.assertRaises(device_errors.CommandFailedError):
+          self.device.GetWebViewUpdateServiceDump()
+
+  def testGetWebViewUpdateServiceDump_noop(self):
+    with self.patch_call(self.call.device.build_version_sdk,
+                         return_value=version_codes.NOUGAT_MR1):
+      with self.assertCalls():
+        self.device.GetWebViewUpdateServiceDump()
+
+
 class DeviceUtilsSetWebViewImplementationTest(DeviceUtilsTest):
 
   def testSetWebViewImplementation_success(self):
@@ -2623,6 +2650,37 @@ class DeviceUtilsSetWebViewImplementationTest(DeviceUtilsTest):
         'cmd webviewupdate set-webview-implementation foo.org'), 'Oops!'):
       with self.assertRaises(device_errors.CommandFailedError):
         self.device.SetWebViewImplementation('foo.org')
+
+
+class DeviceUtilsSetWebViewFallbackLogicTest(DeviceUtilsTest):
+
+  def testSetWebViewFallbackLogic_False_success(self):
+    with self.patch_call(self.call.device.build_version_sdk,
+                         return_value=version_codes.NOUGAT):
+      with self.assertCall(self.call.adb.Shell(
+          'cmd webviewupdate enable-redundant-packages'), 'Success'):
+        self.device.SetWebViewFallbackLogic(False)
+
+  def testSetWebViewFallbackLogic_True_success(self):
+    with self.patch_call(self.call.device.build_version_sdk,
+                         return_value=version_codes.NOUGAT):
+      with self.assertCall(self.call.adb.Shell(
+          'cmd webviewupdate disable-redundant-packages'), 'Success'):
+        self.device.SetWebViewFallbackLogic(True)
+
+  def testSetWebViewFallbackLogic_failure(self):
+    with self.patch_call(self.call.device.build_version_sdk,
+                         return_value=version_codes.NOUGAT):
+      with self.assertCall(self.call.adb.Shell(
+          'cmd webviewupdate enable-redundant-packages'), 'Oops!'):
+        with self.assertRaises(device_errors.CommandFailedError):
+          self.device.SetWebViewFallbackLogic(False)
+
+  def testSetWebViewFallbackLogic_noop(self):
+    with self.patch_call(self.call.device.build_version_sdk,
+                         return_value=version_codes.MARSHMALLOW):
+      with self.assertCalls():
+        self.device.SetWebViewFallbackLogic(False)
 
 
 class DeviceUtilsTakeScreenshotTest(DeviceUtilsTest):
@@ -2723,9 +2781,9 @@ class DeviceUtilsHealthyDevicesTest(mock_calls.TestCase):
         (mock.call.devil.android.sdk.adb_wrapper.AdbWrapper.Devices(),
          [_AdbWrapperMock(s) for s in test_serials]),
         (mock.call.devil.android.device_utils.DeviceUtils.GetABI(),
-         ARM32_ABI),
+         abis.ARM),
         (mock.call.devil.android.device_utils.DeviceUtils.GetABI(),
-         ARM32_ABI)):
+         abis.ARM)):
       blacklist = mock.NonCallableMock(**{'Read.return_value': []})
       devices = device_utils.DeviceUtils.HealthyDevices(blacklist)
     for serial, device in zip(test_serials, devices):
@@ -2738,7 +2796,7 @@ class DeviceUtilsHealthyDevicesTest(mock_calls.TestCase):
         (mock.call.devil.android.sdk.adb_wrapper.AdbWrapper.Devices(),
          [_AdbWrapperMock(s) for s in test_serials]),
         (mock.call.devil.android.device_utils.DeviceUtils.GetABI(),
-         ARM32_ABI)):
+         abis.ARM)):
       blacklist = mock.NonCallableMock(
           **{'Read.return_value': ['fedcba9876543210']})
       devices = device_utils.DeviceUtils.HealthyDevices(blacklist)
@@ -2752,9 +2810,9 @@ class DeviceUtilsHealthyDevicesTest(mock_calls.TestCase):
         (mock.call.devil.android.sdk.adb_wrapper.AdbWrapper.Devices(),
          [_AdbWrapperMock(s) for s in test_serials]),
         (mock.call.devil.android.device_utils.DeviceUtils.GetABI(),
-         ARM32_ABI),
+         abis.ARM),
         (mock.call.devil.android.device_utils.DeviceUtils.GetABI(),
-         ARM32_ABI),
+         abis.ARM),
         (mock.call.devil.android.device_errors.MultipleDevicesError(mock.ANY),
          _MockMultipleDevicesError())):
       with self.assertRaises(_MockMultipleDevicesError):
@@ -2766,7 +2824,7 @@ class DeviceUtilsHealthyDevicesTest(mock_calls.TestCase):
         (mock.call.devil.android.sdk.adb_wrapper.AdbWrapper.Devices(),
          [_AdbWrapperMock(s) for s in test_serials]),
         (mock.call.devil.android.device_utils.DeviceUtils.GetABI(),
-         ARM32_ABI)):
+         abis.ARM)):
       devices = device_utils.DeviceUtils.HealthyDevices(device_arg=None)
     self.assertEquals(1, len(devices))
 
@@ -2798,9 +2856,9 @@ class DeviceUtilsHealthyDevicesTest(mock_calls.TestCase):
         (mock.call.devil.android.sdk.adb_wrapper.AdbWrapper.Devices(),
          [_AdbWrapperMock(s) for s in test_serials]),
         (mock.call.devil.android.device_utils.DeviceUtils.GetABI(),
-         ARM32_ABI),
+         abis.ARM),
         (mock.call.devil.android.device_utils.DeviceUtils.GetABI(),
-         ARM32_ABI)):
+         abis.ARM)):
       devices = device_utils.DeviceUtils.HealthyDevices(device_arg=())
     self.assertEquals(2, len(devices))
 
@@ -2877,12 +2935,12 @@ class DeviceUtilsHealthyDevicesTest(mock_calls.TestCase):
         (mock.call.devil.android.sdk.adb_wrapper.AdbWrapper.Devices(),
          [_AdbWrapperMock(s) for s in test_serials]),
         (mock.call.devil.android.device_utils.DeviceUtils.GetABI(),
-         ARM32_ABI),
+         abis.ARM),
         (mock.call.devil.android.device_utils.DeviceUtils.GetABI(),
-         ARM32_ABI)):
+         abis.ARM)):
       with self.assertRaises(device_errors.NoDevicesError):
         device_utils.DeviceUtils.HealthyDevices(device_arg=[], retries=0,
-                                                abis=[ARM64_ABI])
+                                                abis=[abis.ARM_64])
 
   def testHealthyDevices_abisArg_filter_on_abi(self):
     test_serials = ['0123456789abcdef', 'fedcba9876543210']
@@ -2890,12 +2948,12 @@ class DeviceUtilsHealthyDevicesTest(mock_calls.TestCase):
         (mock.call.devil.android.sdk.adb_wrapper.AdbWrapper.Devices(),
          [_AdbWrapperMock(s) for s in test_serials]),
         (mock.call.devil.android.device_utils.DeviceUtils.GetABI(),
-         ARM64_ABI),
+         abis.ARM_64),
         (mock.call.devil.android.device_utils.DeviceUtils.GetABI(),
-         ARM32_ABI)):
+         abis.ARM)):
       devices = device_utils.DeviceUtils.HealthyDevices(device_arg=[],
                                                         retries=0,
-                                                        abis=[ARM64_ABI])
+                                                        abis=[abis.ARM_64])
     self.assertEquals(1, len(devices))
 
 

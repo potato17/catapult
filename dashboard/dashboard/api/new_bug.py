@@ -1,8 +1,6 @@
-# Copyright 2017 The Chromium Authors. All rights reserved.
+# Copyright 2019 The Chromium Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
-
-import httplib2
 
 from dashboard import file_bug
 from dashboard.api import api_request_handler
@@ -14,7 +12,7 @@ class NewBugHandler(api_request_handler.ApiRequestHandler):
     if not utils.IsValidSheriffUser():
       raise api_request_handler.ForbiddenError()
 
-  def Post(self, *args):
+  def Post(self):
     owner = self.request.get('owner')
     cc = self.request.get('cc')
     summary = self.request.get('summary')
@@ -23,7 +21,7 @@ class NewBugHandler(api_request_handler.ApiRequestHandler):
     components = self.request.get_all('component')
     keys = self.request.get_all('key')
 
-    # TODO(benjhayden): After v2spa launches, change its client id to something
+    # TODO(924228): After v2spa launches, change its client id to something
     # that is whitelisted by the issue tracker service (or have its client id
     # whitelisted), then forward the bearer token from
     # self.request.headers.get('Authorization') to the issue tracker service by

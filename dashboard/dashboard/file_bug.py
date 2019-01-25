@@ -114,6 +114,8 @@ class FileBugHandler(request_handler.RequestHandler):
     """Creates a bug, associates it with the alerts, sends a HTML response.
 
     Args:
+      owner: string, must end with @chromium.org if not empty.
+      cc: CSV of email addresses to CC on the bug.
       summary: The new bug summary string.
       description: The new bug description string.
       labels: List of label strings for the new bug.
@@ -128,8 +130,9 @@ class FileBugHandler(request_handler.RequestHandler):
       return
 
     http = oauth2_decorator.DECORATOR.http()
-    template_params = FileBug(http, owner, cc, summary, description, labels,
-        components, urlsafe_keys)
+    template_params = FileBug(
+        http, owner, cc, summary, description, labels, components,
+        urlsafe_keys.split(','))
     self.RenderHtml('bug_result.html', template_params)
 
 
@@ -385,7 +388,7 @@ def _AssignBugToCLAuthor(bug_id, alert, service):
 
 def FileBug(http, owner, cc, summary, description, labels, components,
             urlsafe_keys):
-  alert_keys = [ndb.Key(urlsafe=k) for k in urlsafe_keys.split(',')]
+  alert_keys = [ndb.Key(urlsafe=k) for k in urlsafe_keys]
   alerts = ndb.get_multi(alert_keys)
 
   if not description:

@@ -24,25 +24,6 @@ class AlertsHandler(api_request_handler.ApiRequestHandler):
   def _AllowAnonymous(self):
     return True
 
-  def _AuthorizedHttp(self):
-    # TODO(benjhayden): Use this instead of ServiceAccountHttp in order to use
-    # the user's account. That will require changing the google-signin's
-    # client-id in chromeperf-app.html to a client-id that is whitelisted by the
-    # issue tracker service, which will require either adding
-    # v2spa-dot-chromeperf.appspot.com to the list of domains for an existing
-    # client id, or else launching v2spa to chromeperf.appspot.com.
-    http = httplib2.Http()
-    orig_request = http.request
-    def NewRequest(uri, method='GET', body=None, headers=None,
-                   redirections=httplib2.DEFAULT_MAX_REDIRECTS,
-                   connection_type=None):
-      headers = dict(headers or {})
-      headers['Authorization'] = self.request.headers.get('Authorization')
-      return orig_request(uri, method, body, headers, redirections,
-                          connection_type)
-    http.request = NewRequest
-    return http
-
   def _RecentBugs(self):
     if not utils.IsValidSheriffUser():
       raise api_request_handler.BadRequestError(
@@ -54,19 +35,10 @@ class AlertsHandler(api_request_handler.ApiRequestHandler):
         sort='-id')
     return {'bugs': response.get('items', [])}
 
-  def _ExistingBug(self):
-    keys = self.request.get_all('key')
-    bug_id = int(self.request.get('bug_id'))
-    alert_entities = ndb.get_multi([ndb.Key(urlsafe=k) for k in keys])
-    for a in alert_entities:
-      a.bug_id = bug_id
-    ndb.put_multi(alert_entities)
-    return {}
+  def _CheckUser(self):
+    pass
 
-  def PrivilegedPost(self, *args):
-    return self.UnprivilegedPost(*args)
-
-  def UnprivilegedPost(self, *args):
+  def Post(self, *args):
     """Returns alert data in response to API requests.
 
     Possible list types:
@@ -126,8 +98,6 @@ class AlertsHandler(api_request_handler.ApiRequestHandler):
         list_type = args[0]
         if list_type == 'recent_bugs':
           return self._RecentBugs()
-        elif list_type == 'existing_bug':
-          return self._ExistingBug()
     except request_handler.InvalidInputError as e:
       raise api_request_handler.BadRequestError(e.message)
 

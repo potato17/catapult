@@ -5,6 +5,8 @@
 import unittest
 
 from tracing.value import gtest_json_converter
+from tracing.value import histogram
+from tracing.value import legacy_unit_info
 from tracing.value.diagnostics import reserved_infos
 
 
@@ -48,8 +50,10 @@ class GtestJsonConverterUnittest(unittest.TestCase):
     # assertAlmostEqual necessary to avoid floating point precision issues.
     self.assertAlmostEqual(story1.average, 10.12345)
     self.assertAlmostEqual(story1.standard_deviation, 0.54321)
+    self.assertAlmostEqual(story1.sum, story1.num_values * story1.average)
     self.assertEqual(story2.average, 30)
     self.assertEqual(story2.standard_deviation, 0)
+    self.assertEqual(story2.sum, story2.num_values * story2.average)
     self.assertEqual(story1.unit, story2.unit)
     self.assertEqual(story1.unit, 'ms_smallerIsBetter')
 
@@ -69,11 +73,52 @@ class GtestJsonConverterUnittest(unittest.TestCase):
     self.assertAlmostEqual(story1.average, 100000 * NANO_TO_MILLISECONDS)
     self.assertAlmostEqual(story1.standard_deviation,
                            2543.543 * NANO_TO_MILLISECONDS)
+    self.assertAlmostEqual(story1.sum, story1.num_values * story1.average)
     self.assertAlmostEqual(story2.average, 12345.6789 * NANO_TO_MILLISECONDS)
     self.assertAlmostEqual(story2.standard_deviation,
                            301.2 * NANO_TO_MILLISECONDS)
+    self.assertAlmostEqual(story2.sum, story2.num_values * story2.average)
     self.assertEqual(story1.unit, story2.unit)
     self.assertEqual(story1.unit, 'msBestFitFormat_smallerIsBetter')
+
+  def testConvertOverlappingUnit(self):
+    # Some units in the legacy unit mapping are the same as the units defined
+    # for histograms - the former should be used since it gives us improvement
+    # direction.
+    data = {
+        'metric1': {
+            'units': 'Hz',
+            'traces': {
+                'story1': ['60', '0'],
+            }
+        }
+    }
+    histograms = gtest_json_converter.ConvertGtestJson(data)
+    self.assertEqual(len(histograms), 1)
+    self.assertEqual(histograms.GetFirstHistogram().unit, 'Hz_biggerIsBetter')
+
+  def testConvertKnownNonLegacyUnit(self):
+    # A unit not in the legacy mapping but present in the list of histogram
+    # units should still be converted to a non-unitless unit.
+    data = {
+        'metric1': {
+            'units': 'V',
+            'traces': {
+                'story1': ['10', '1'],
+            },
+        },
+        'metric2': {
+            'units': 'V_smallerIsBetter',
+            'traces': {
+                'story1': ['1', '1'],
+            },
+        },
+    }
+    histograms = gtest_json_converter.ConvertGtestJson(data)
+    self.assertEqual(len(histograms), 2)
+    self.assertEqual(histograms.GetHistogramsNamed('metric1')[0].unit, 'V')
+    self.assertEqual(
+        histograms.GetHistogramsNamed('metric2')[0].unit, 'V_smallerIsBetter')
 
   def testConvertUnknownUnit(self):
     data = {
@@ -82,8 +127,8 @@ class GtestJsonConverterUnittest(unittest.TestCase):
             'traces': {
                 'story1': ['10', '1'],
                 'story2': ['123.4', '7.89'],
-            }
-        }
+            },
+        },
     }
     histograms = gtest_json_converter.ConvertGtestJson(data)
     self.assertEqual(len(histograms), 2)
@@ -102,7 +147,14 @@ class GtestJsonConverterUnittest(unittest.TestCase):
 
     self.assertEqual(story1.average, 10)
     self.assertEqual(story1.standard_deviation, 1)
+    self.assertEqual(story1.sum, story1.num_values * story1.average)
     self.assertAlmostEqual(story2.average, 123.4)
     self.assertAlmostEqual(story2.standard_deviation, 7.89)
+    self.assertAlmostEqual(story2.sum, story2.num_values * story2.average)
     self.assertEqual(story1.unit, story2.unit)
     self.assertEqual(story1.unit, 'unitless_smallerIsBetter')
+
+  def testLegacyUnitNamesValid(self):
+    # Test that all the legacy unit names are recognized by histograms.
+    for legacy_unit in legacy_unit_info.LEGACY_UNIT_INFO.itervalues():
+      self.assertTrue(legacy_unit.name in histogram.UNIT_NAMES)

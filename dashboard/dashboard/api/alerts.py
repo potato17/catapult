@@ -80,5 +80,5 @@ class AlertsHandler(api_request_handler.ApiRequestHandler):
       raise api_request_handler.BadRequestError(e.message)
 
     response['anomalies'] = alerts.AnomalyDicts(
-        alert_list, self.request.get('v2') is not None)
+        alert_list, self.request.get('v2'))
     return response

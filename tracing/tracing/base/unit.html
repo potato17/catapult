@@ -340,7 +340,6 @@ tr.exportTo('tr.b', function() {
     }
 
     const baseUnit = Unit.byName[params.baseUnitName];
-    baseUnit.baseUnit = baseUnit;
     definedUnits.forEach(u => u.baseUnit = baseUnit);
   };
 

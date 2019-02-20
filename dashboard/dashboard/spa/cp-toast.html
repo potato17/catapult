@@ -12,9 +12,13 @@ found in the LICENSE file.
   <template>
     <style>
       :host {
+        background-color: var(--primary-color-dark, blue);
         bottom: 0;
+        box-shadow: var(--elevation-2);
+        color: var(--background-color, white);
         left: 0;
-        right: 0;
+        margin: 16px;
+        padding: 8px;
         position: fixed;
       }
       :host(:not([opened])) {

@@ -9,8 +9,6 @@ tr.exportTo('cp', () => {
       super(options);
       this.method_ = 'POST';
       this.body_ = new FormData();
-      this.body_.set('v2', 'true');
-      this.body_.set('limit', 3000);
       for (const [key, value] of Object.entries(options.body)) {
         this.body_.set(key, value);
       }

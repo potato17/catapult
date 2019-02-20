@@ -8,7 +8,7 @@
     static get is() { return 'cp-checkbox'; }
 
     click() {
-      this.$.native.dispatchEvent(new CustomEvent('change'));
+      this.$.native.click();
     }
 
     onChange_(event) {

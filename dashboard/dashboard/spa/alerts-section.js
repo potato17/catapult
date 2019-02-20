@@ -12,21 +12,6 @@ tr.exportTo('cp', () => {
       this.scrollIntoView(true);
     }
 
-    async connectedCallback() {
-      super.connectedCallback();
-      this.dispatch('connected', this.statePath);
-    }
-
-    isLoading_(isLoading, isPreviewLoading) {
-      return isLoading || isPreviewLoading;
-    }
-
-    allTriaged_(alertGroups, showingTriaged) {
-      if (showingTriaged) return alertGroups.length === 0;
-      return alertGroups.filter(group =>
-        group.alerts.length > group.triaged.count).length === 0;
-    }
-
     canTriage_(alertGroups) {
       const selectedAlerts = cp.AlertsTable.getSelectedAlerts(alertGroups);
       if (selectedAlerts.length === 0) return false;
@@ -88,26 +73,9 @@ tr.exportTo('cp', () => {
       this.dispatch('ignore', this.statePath);
     }
 
-    onSelected_(event) {
-      this.dispatch('maybeLayoutPreview', this.statePath);
-    }
-
-    onAlertClick_(event) {
+    onSelectAlert_(event) {
       this.dispatch('selectAlert', this.statePath,
           event.detail.alertGroupIndex, event.detail.alertIndex);
-    }
-
-    onPreviewLineCountChange_() {
-      this.dispatch('updateAlertColors', this.statePath);
-    }
-
-    onSort_(event) {
-      this.dispatch('prefetchPreviewAlertGroup_',
-          this.statePath, this.alertGroups[0]);
-    }
-
-    observeRecentPerformanceBugs_() {
-      this.dispatch('observeRecentPerformanceBugs', this.statePath);
     }
   }
 
@@ -117,25 +85,15 @@ tr.exportTo('cp', () => {
     existingBug: options => cp.TriageExisting.buildState({}),
     isLoading: options => false,
     newBug: options => cp.TriageNew.buildState({}),
-    preview: options => cp.ChartPair.buildState(options),
-    sectionId: options => options.sectionId || tr.b.GUID.allocateSimple(),
     selectedAlertPath: options => undefined,
+    selectedAlertsCount: options => 0,
   };
-
-  AlertsSection.observers = [
-    'observeRecentPerformanceBugs_(recentPerformanceBugs)',
-  ];
 
   AlertsSection.buildState = options =>
     cp.buildState(AlertsSection.State, options);
 
   AlertsSection.properties = {
     ...cp.buildProperties('state', AlertsSection.State),
-    ...cp.buildProperties('linkedState', {
-      // AlertsSection only needs the linkedStatePath property to forward to
-      // ChartPair.
-    }),
-    recentPerformanceBugs: {statePath: 'recentPerformanceBugs'},
   };
 
   AlertsSection.actions = {
@@ -160,24 +118,6 @@ tr.exportTo('cp', () => {
       const state = Polymer.Path.get(getState(), statePath);
       localStorage.setItem('recentlyModifiedBugs', JSON.stringify(
           state.recentlyModifiedBugs));
-    },
-
-    updateAlertColors: statePath => async(dispatch, getState) => {
-      dispatch({
-        type: AlertsSection.reducers.updateAlertColors.name,
-        statePath,
-      });
-    },
-
-    connected: statePath => async(dispatch, getState) => {
-      const recentlyModifiedBugs = localStorage.getItem('recentlyModifiedBugs');
-      if (recentlyModifiedBugs) {
-        dispatch({
-          type: AlertsSection.reducers.receiveRecentlyModifiedBugs.name,
-          statePath,
-          recentlyModifiedBugs,
-        });
-      }
     },
 
     submitExistingBug: statePath => async(dispatch, getState) => {
@@ -223,11 +163,6 @@ tr.exportTo('cp', () => {
         });
 
         state = Polymer.Path.get(getState(), statePath);
-        dispatch(AlertsSection.actions.prefetchPreviewAlertGroup_(
-            statePath, state.alertGroups[0]));
-        if (bugId !== 0) {
-          dispatch(Redux.UPDATE(`${statePath}.preview`, {lineDescriptors: []}));
-        }
       } catch (err) {
         // eslint-disable-next-line no-console
         console.error(err);
@@ -322,9 +257,6 @@ tr.exportTo('cp', () => {
           bugId,
         });
         state = Polymer.Path.get(getState(), statePath);
-        dispatch(AlertsSection.actions.prefetchPreviewAlertGroup_(
-            statePath, state.alertGroups[0]));
-        dispatch(Redux.UPDATE(`${statePath}.preview`, {lineDescriptors: []}));
       } catch (err) {
         // eslint-disable-next-line no-console
         console.error(err);
@@ -348,13 +280,12 @@ tr.exportTo('cp', () => {
     },
 
     loadAlerts: (statePath, sources) => async(dispatch, getState) => {
-      const started = performance.now();
       dispatch({
         type: AlertsSection.reducers.startLoadingAlerts.name,
         statePath,
-        started,
       });
-      let state = Polymer.Path.get(getState(), statePath);
+      const rootState = getState();
+      const state = Polymer.Path.get(rootState, statePath);
 
       if (sources.length > 0) {
         dispatch(cp.MenuInput.actions.blurAll());
@@ -369,41 +300,22 @@ tr.exportTo('cp', () => {
       const batches = new cp.BatchIterator(sources.map(wrapRequest));
 
       for await (const {results, errors} of batches) {
-        state = Polymer.Path.get(getState(), statePath);
-        if (!state) return;
-        if (state.started !== started) {
-          // loadAlerts() was called again before this one finished. Abandon.
-          return;
-        }
-
+        // TODO(benjhayden): return if re-entered.
         const alerts = [];
-        const nextRequests = [];
         for (const {body, response} of results) {
-          alerts.push.apply(alerts, response.anomalies);
-
           const cursor = response.next_cursor;
-          if (cursor) nextRequests.push({...body, cursor});
-        }
+          // TODO(benjhayden): When should this stop chasing cursors so it
+          // doesn't try to load all old alerts for this sheriff?
+          if (cursor) batches.add(wrapRequest({...body, cursor}));
 
+          alerts.push.apply(alerts, response.anomalies);
+        }
         dispatch({
           type: AlertsSection.reducers.receiveAlerts.name,
           statePath,
           alerts,
           errors,
         });
-
-        state = Polymer.Path.get(getState(), statePath);
-        if (!state) return;
-        if (state.alertGroups.length < 100 &&
-            ((performance.now() - started) < 60e3)) {
-          // Limit the number of alertGroups displayed to prevent OOM.
-          for (const next of nextRequests) {
-            batches.add(wrapRequest(next));
-          }
-        }
-        // TODO Otherwise, store nextRequests and chase them when the user
-        // clicks a More button.
-
         await cp.animationFrame();
       }
 
@@ -411,92 +323,12 @@ tr.exportTo('cp', () => {
         type: AlertsSection.reducers.finalizeAlerts.name,
         statePath,
       });
-      state = Polymer.Path.get(getState(), statePath);
-      if (!state.alertGroups === cp.AlertsTable.PLACEHOLDER_ALERT_GROUPS) {
-        dispatch(AlertsSection.actions.prefetchPreviewAlertGroup_(
-            statePath, state.alertGroups[0]));
-      }
     },
-
-    prefetchPreviewAlertGroup_: (statePath, alertGroup) =>
-      async(dispatch, getState) => {
-        if (!alertGroup) return;
-        const suites = new Set();
-        const lineDescriptors = [];
-        for (const alert of alertGroup.alerts) {
-          suites.add(alert.suite);
-          lineDescriptors.push(AlertsSection.computeLineDescriptor(alert));
-        }
-        dispatch(cp.ChartTimeseries.actions.prefetch(
-            `${statePath}.preview`, lineDescriptors));
-        await Promise.all([...suites].map(suite =>
-          new cp.DescribeRequest({suite}).response));
-      },
-
-    layoutPreview: statePath => async(dispatch, getState) => {
-      const state = Polymer.Path.get(getState(), statePath);
-      const alerts = cp.AlertsTable.getSelectedAlerts(state.alertGroups);
-      const lineDescriptors = alerts.map(AlertsSection.computeLineDescriptor);
-      if (lineDescriptors.length === 1) {
-        lineDescriptors.push({
-          ...lineDescriptors[0],
-          buildType: 'ref',
-        });
-      }
-      dispatch(Redux.UPDATE(`${statePath}.preview`, {lineDescriptors}));
-
-      const suites = new Set();
-      for (const descriptor of lineDescriptors) {
-        suites.add(descriptor.suites[0]);
-      }
-      await Promise.all([...suites].map(suite =>
-        new cp.DescribeRequest({suite}).response));
-    },
-
-    maybeLayoutPreview: statePath => async(dispatch, getState) => {
-      const state = Polymer.Path.get(getState(), statePath);
-      if (!state.selectedAlertsCount) {
-        dispatch(Redux.UPDATE(`${statePath}.preview`, {lineDescriptors: []}));
-        return;
-      }
-
-      dispatch(AlertsSection.actions.layoutPreview(statePath));
-    },
-
-    observeRecentPerformanceBugs: statePath => async(dispatch, getState) => {
-      dispatch({
-        type: AlertsSection.reducers.receiveRecentPerformanceBugs.name,
-        statePath,
-      });
-    },
-  };
-
-  AlertsSection.computeLineDescriptor = alert => {
-    return {
-      baseUnit: alert.baseUnit,
-      suites: [alert.suite],
-      measurement: alert.measurement,
-      bots: [alert.master + ':' + alert.bot],
-      cases: [alert.case],
-      statistic: 'avg', // TODO
-      buildType: 'test',
-    };
   };
 
   AlertsSection.reducers = {
-    receiveSheriffs: (state, {sheriffs}, rootState) => {
-      const sheriff = cp.MenuInput.buildState({
-        label: `Sheriff (${sheriffs.length})`,
-        options: sheriffs,
-        selectedOptions: state.sheriff ? state.sheriff.selectedOptions : [],
-      });
-      return {...state, sheriff};
-    },
-
     selectAlert: (state, action, rootState) => {
-      if (state.alertGroups === cp.AlertsTable.PLACEHOLDER_ALERT_GROUPS) {
-        return state;
-      }
+      if (state.areAlertGroupsPlaceholders) return state;
       const alertPath =
         `alertGroups.${action.alertGroupIndex}.alerts.${action.alertIndex}`;
       const alert = Polymer.Path.get(state, alertPath);
@@ -508,20 +340,11 @@ tr.exportTo('cp', () => {
         return {
           ...state,
           selectedAlertPath: undefined,
-          preview: {
-            ...state.preview,
-            lineDescriptors: cp.AlertsTable.getSelectedAlerts(
-                state.alertGroups).map(AlertsSection.computeLineDescriptor),
-          },
         };
       }
       return {
         ...state,
         selectedAlertPath: alertPath,
-        preview: {
-          ...state.preview,
-          lineDescriptors: [AlertsSection.computeLineDescriptor(alert)],
-        },
       };
     },
 
@@ -563,30 +386,6 @@ tr.exportTo('cp', () => {
         hasIgnored: false,
         triagedBugId: action.triagedBugId,
         recentlyModifiedBugs,
-      };
-    },
-
-    updateAlertColors: (state, action, rootState) => {
-      const colorByDescriptor = new Map();
-      for (const line of state.preview.chartLayout.lines) {
-        colorByDescriptor.set(cp.ChartTimeseries.stringifyDescriptor(
-            line.descriptor), line.color);
-      }
-      return {
-        ...state,
-        alertGroups: state.alertGroups.map(alertGroup => {
-          return {
-            ...alertGroup,
-            alerts: alertGroup.alerts.map(alert => {
-              const descriptor = cp.ChartTimeseries.stringifyDescriptor(
-                  AlertsSection.computeLineDescriptor(alert));
-              return {
-                ...alert,
-                color: colorByDescriptor.get(descriptor),
-              };
-            }),
-          };
-        }),
       };
     },
 
@@ -648,66 +447,51 @@ tr.exportTo('cp', () => {
     },
 
     receiveAlerts: (state, {alerts, errors}, rootState) => {
+      state = {
+        ...state,
+        selectedAlertsCount: 0,
+      };
+
       // |alerts| are all new.
       // Group them together with previously-received alerts from
-      // state.alertGroups[].alerts.
-
-      // TODO display errors
-
-      // The user may have already selected and/or triaged some alerts, so keep
-      // that information, just re-group the alerts.
-      alerts = alerts.map(AlertsSection.transformAlert);
-      if (state.alertGroups !== cp.AlertsTable.PLACEHOLDER_ALERT_GROUPS) {
-        for (const alertGroup of state.alertGroups) {
-          alerts.push(...alertGroup.alerts);
-        }
-      }
+      // state.alertGroups[].alerts, which are post-transformation.
+      // d.groupAlerts() requires pre-transformed objects.
+      // Some previously-received alerts may have been triaged already, so we
+      // can't simply accumulate pre-transformation alerts across batches.
 
       if (!alerts.length) {
-        return state;
-        // Wait till finalizeAlerts to display the happy cat.
-      }
-
-      const expandedGroupAlertKeys = new Set();
-      const expandedTriagedAlertKeys = new Set();
-      for (const group of state.alertGroups) {
-        if (group.isExpanded) {
-          expandedGroupAlertKeys.add(group.alerts[0].key);
+        state = {
+          ...state,
+          alertGroups: cp.AlertsTable.PLACEHOLDER_ALERT_GROUPS,
+          areAlertGroupsPlaceholders: true,
+          showBugColumn: true,
+          showMasterColumn: true,
+          showTestCaseColumn: true,
+        };
+        if (state.sheriff.selectedOptions.length === 0 &&
+            state.bug.selectedOptions.length === 0 &&
+            state.report.selectedOptions.length === 0) {
+          return state;
         }
-        if (group.triaged.isExpanded) {
-          expandedTriagedAlertKeys.add(group.alerts[0].key);
-        }
-      }
-
-      let alertGroups = cp.groupAlerts(alerts, state.showingTriaged);
-      alertGroups = alertGroups.map((alerts, groupIndex) => {
-        let isExpanded = false;
-        let isTriagedExpanded = false;
-        for (const a of alerts) {
-          if (expandedGroupAlertKeys.has(a.key)) isExpanded = true;
-          if (expandedTriagedAlertKeys.has(a.key)) isTriagedExpanded = true;
-        }
-
         return {
+          ...state,
+          alertGroups: [],
+          areAlertGroupsPlaceholders: false,
+        };
+      }
+
+      let alertGroups = d.groupAlerts(alerts, state.showingTriaged);
+      alertGroups = alertGroups.map((alerts, groupIndex) => {
+        alerts = alerts.map(AlertsSection.transformAlert);
+        return {
+          isExpanded: false,
           alerts,
-          isExpanded,
           triaged: {
-            isExpanded: isTriagedExpanded,
+            isExpanded: false,
             count: alerts.filter(a => a.bugId).length,
           }
         };
       });
-
-      if (!state.showingTriaged && state.sheriff.selectedOptions.length) {
-        // Remove completely-triaged groups to save memory.
-        // TODO fix showingTriaged=true by reloading these alerts?
-        alertGroups = alertGroups.filter(group =>
-          group.alerts.length > group.triaged.count);
-        if (!alertGroups.length) {
-          return state;
-          // Wait till finalizeAlerts to display the happy cat.
-        }
-      }
 
       alertGroups = cp.AlertsTable.sortGroups(
           alertGroups, state.sortColumn, state.sortDescending,
@@ -716,18 +500,16 @@ tr.exportTo('cp', () => {
       // Don't automatically select the first group. Users often want to sort
       // the table by some column before previewing any alerts.
 
-      return AlertsSection.reducers.updateColumns({...state, alertGroups});
+      return AlertsSection.reducers.updateColumns({
+        ...state, alertGroups, areAlertGroupsPlaceholders: false,
+      });
     },
 
     finalizeAlerts: (state, action, rootState) => {
-      state = {...state, isLoading: false};
-      if (state.alertGroups === cp.AlertsTable.PLACEHOLDER_ALERT_GROUPS &&
-          (state.sheriff.selectedOptions.length ||
-           state.bug.selectedOptions.length ||
-           state.report.selectedOptions.length)) {
-        state = {...state, alertGroups: []};
-      }
-      return state;
+      return {
+        ...state,
+        isLoading: false,
+      };
     },
 
     updateColumns: (state, action, rootState) => {
@@ -735,7 +517,7 @@ tr.exportTo('cp', () => {
       let showBugColumn = false;
       let showTriagedColumn = false;
       const masters = new Set();
-      const cases = new Set();
+      const testCases = new Set();
       for (const group of state.alertGroups) {
         if (group.triaged.count < group.alerts.length) {
           showTriagedColumn = true;
@@ -745,7 +527,7 @@ tr.exportTo('cp', () => {
             showBugColumn = true;
           }
           masters.add(alert.master);
-          cases.add(alert.case);
+          testCases.add(alert.testCase);
         }
       }
       if (state.showingTriaged) showTriagedColumn = false;
@@ -754,71 +536,14 @@ tr.exportTo('cp', () => {
         ...state,
         showBugColumn,
         showMasterColumn: masters.size > 1,
-        showTestCaseColumn: cases.size > 1,
+        showTestCaseColumn: testCases.size > 1,
         showTriagedColumn,
       };
     },
 
-    startLoadingAlerts: (state, {started}, rootState) => {
-      return {...state, isLoading: true, started};
+    startLoadingAlerts: (state, action, rootState) => {
+      return {...state, isLoading: true};
     },
-
-    receiveRecentPerformanceBugs: (state, action, rootState) => {
-      return {
-        ...state,
-        bug: {
-          ...state.bug,
-          options: rootState.recentPerformanceBugs.map(
-              AlertsSection.transformRecentPerformanceBugOption),
-        }
-      };
-    },
-
-    receiveRecentlyModifiedBugs: (state, action, rootState) => {
-      const recentlyModifiedBugs = JSON.parse(action.recentlyModifiedBugs);
-      return {...state, recentlyModifiedBugs};
-    },
-  };
-
-  AlertsSection.transformRecentPerformanceBugOption = bug => {
-    return {
-      label: bug.id + ' ' + bug.summary,
-      value: bug.id,
-    };
-  };
-
-  AlertsSection.newStateOptionsFromQueryParams = queryParams => {
-    return {
-      sheriffs: queryParams.getAll('sheriff').map(
-          sheriffName => sheriffName.replace(/_/g, ' ')),
-      bugs: queryParams.getAll('bug'),
-      reports: queryParams.getAll('ar'),
-      minRevision: queryParams.get('minRev'),
-      maxRevision: queryParams.get('maxRev'),
-      sortColumn: queryParams.get('sort') || 'startRevision',
-      showingImprovements: queryParams.get('improvements') !== null,
-      showingTriaged: queryParams.get('triaged') !== null,
-      sortDescending: queryParams.get('descending') !== null,
-    };
-  };
-
-  AlertsSection.compareAlerts = (alertA, alertB, sortColumn) => {
-    switch (sortColumn) {
-      case 'bug': return alertA.bugId - alertB.bugId;
-      case 'startRevision': return alertA.startRevision - alertB.startRevision;
-      case 'suite':
-        return alertA.suite.localeCompare(alertB.suite);
-      case 'master': return alertA.master.localeCompare(alertB.master);
-      case 'bot': return alertA.bot.localeCompare(alertB.bot);
-      case 'measurement':
-        return alertA.measurement.localeCompare(alertB.measurement);
-      case 'case':
-        return alertA.case.localeCompare(alertB.case);
-      case 'delta': return alertA.deltaValue - alertB.deltaValue;
-      case 'deltaPct':
-        return Math.abs(alertA.percentDeltaValue) -
-          Math.abs(alertB.percentDeltaValue);
-    }
   };
 
   AlertsSection.transformAlert = alert => {
@@ -869,101 +594,10 @@ tr.exportTo('cp', () => {
       percentDeltaValue,
       startRevision: alert.start_revision,
       endRevision: alert.end_revision,
-      case: alert.descriptor.testCase,
-      suite: alert.descriptor.testSuite,
+      testCase: alert.descriptor.testCase,
+      testSuite: alert.descriptor.testSuite,
       v1ReportLink: alert.dashboard_link,
     };
-  };
-
-  AlertsSection.transformBug = bug => {
-    // Save memory by stripping out all the unnecessary data.
-    // TODO save bandwidth by stripping out the unnecessary data in the
-    // backend request handler.
-    let revisionRange = bug.summary.match(/.* (\d+):(\d+)$/);
-    if (revisionRange === null) {
-      revisionRange = new tr.b.math.Range();
-    } else {
-      revisionRange = tr.b.math.Range.fromExplicitRange(
-          parseInt(revisionRange[1]), parseInt(revisionRange[2]));
-    }
-    return {
-      id: '' + bug.id,
-      status: bug.status,
-      owner: bug.owner ? bug.owner.name : '',
-      summary: cp.breakWords(bug.summary),
-      revisionRange,
-    };
-  };
-
-  AlertsSection.getSessionState = state => {
-    return {
-      sheriffs: state.sheriff.selectedOptions,
-      bugs: state.bug.selectedOptions,
-      showingImprovements: state.showingImprovements,
-      showingTriaged: state.showingTriaged,
-      sortColumn: state.sortColumn,
-      sortDescending: state.sortDescending,
-    };
-  };
-
-  AlertsSection.getRouteParams = state => {
-    const queryParams = new URLSearchParams();
-    for (const sheriff of state.sheriff.selectedOptions) {
-      queryParams.append('sheriff', sheriff.replace(/ /g, '_'));
-    }
-    for (const bug of state.bug.selectedOptions) {
-      queryParams.append('bug', bug);
-    }
-    for (const name of state.report.selectedOptions) {
-      queryParams.append('ar', name);
-    }
-    if (state.minRevision && state.minRevision.match(/^\d+$/)) {
-      queryParams.set('minRev', state.minRevision);
-    }
-    if (state.maxRevision && state.maxRevision.match(/^\d+$/)) {
-      queryParams.set('maxRev', state.maxRevision);
-    }
-    if (state.showingImprovements) queryParams.set('improvements', '');
-    if (state.showingTriaged) queryParams.set('triaged', '');
-    if (state.sortColumn !== 'startRevision') {
-      queryParams.set('sort', state.sortColumn);
-    }
-    if (state.sortDescending) queryParams.set('descending', '');
-    return queryParams;
-  };
-
-  AlertsSection.isEmpty = state => (
-    state &&
-    (!state.sheriff || !state.sheriff.selectedOptions ||
-     (state.sheriff.selectedOptions.length === 0)) &&
-    (!state.bug || !state.bug.selectedOptions ||
-     (state.bug.selectedOptions.length === 0)) &&
-    (!state.report || !state.report.selectedOptions ||
-     (state.report.selectedOptions.length === 0)));
-
-  AlertsSection.matchesOptions = (state, options) => {
-    if (!tr.b.setsEqual(new Set(options.reports),
-        new Set(state.report.selectedOptions))) {
-      return false;
-    }
-    if (!tr.b.setsEqual(new Set(options.sheriffs),
-        new Set(state.sheriff.selectedOptions))) {
-      return false;
-    }
-    if (!tr.b.setsEqual(new Set(options.bugs),
-        new Set(state.bug.selectedOptions))) {
-      return false;
-    }
-    return true;
-  };
-
-  AlertsSection.getTitle = state => {
-    if (state.sheriff.selectedOptions.length === 1) {
-      return state.sheriff.selectedOptions[0];
-    }
-    if (state.bug.selectedOptions.length === 1) {
-      return state.bug.selectedOptions[0];
-    }
   };
 
   cp.ElementBase.register(AlertsSection);

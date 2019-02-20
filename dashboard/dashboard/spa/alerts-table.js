@@ -125,9 +125,9 @@ tr.exportTo('cp', () => {
       }));
     }
 
-    async onRowClick_(event) {
+    async onRowTap_(event) {
       if (event.target.tagName !== 'TD') return;
-      this.dispatchEvent(new CustomEvent('alert-click', {
+      this.dispatchEvent(new CustomEvent('select-alert', {
         bubbles: true,
         composed: true,
         detail: {
@@ -241,11 +241,11 @@ tr.exportTo('cp', () => {
           bugId: AlertsTable.DASHES,
           startRevision: AlertsTable.DASHES,
           endRevision: AlertsTable.DASHES,
-          suite: AlertsTable.DASHES,
+          testSuite: AlertsTable.DASHES,
           measurement: AlertsTable.DASHES,
           master: AlertsTable.DASHES,
           bot: AlertsTable.DASHES,
-          case: AlertsTable.DASHES,
+          testCase: AlertsTable.DASHES,
           deltaValue: 0,
           deltaUnit: tr.b.Unit.byName.countDelta_biggerIsBetter,
           percentDeltaValue: 0,
@@ -260,10 +260,9 @@ tr.exportTo('cp', () => {
     previousSelectedAlertKey: options => undefined,
     alertGroups: options => options.alertGroups ||
       AlertsTable.PLACEHOLDER_ALERT_GROUPS,
-    selectedAlertsCount: options => 0,
     showBugColumn: options => options.showBugColumn !== false,
     showMasterColumn: options => options.showMasterColumn !== false,
-    showCaseColumn: options => options.showCaseColumn !== false,
+    showTestCaseColumn: options => options.showTestCaseColumn !== false,
     showTriagedColumn: options => options.showTriagedColumn !== false,
     showingTriaged: options => options.showingTriaged || false,
     sortColumn: options => options.sortColumn || 'startRevision',

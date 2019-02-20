@@ -30,6 +30,7 @@ found in the LICENSE file.
         cursor: ew-resize;
         position: absolute;
         top: 0;
+        width: 100%;
       }
 
       .brush_handle path {
@@ -63,24 +64,17 @@ found in the LICENSE file.
 
       #main {
         position: relative;
-        --mouse: outside;
       }
 
       #tooltip {
-        display: flex;
-        position: absolute;
-        white-space: pre;
-        z-index: var(--layer-menu, 100);
-      }
-
-      #tooltip table {
         background-color: var(--background-color, white);
         border-style: solid;
         border-width: 2px;
-      }
-
-      #main:hover {
-        --mouse: inside;
+        display: flex;
+        padding: 8px;
+        position: absolute;
+        white-space: pre;
+        z-index: var(--layer-menu, 100);
       }
 
       #tooltip td {
@@ -88,12 +82,7 @@ found in the LICENSE file.
       }
 
       .icon {
-        /* UA stylesheet sets overflow:hidden for foreignObject, so prevent
-           overflow.
-        */
-        height: 100%;
         transform: translate(-12px, -12px);
-        width: 100%;
       }
 
       .icon iron-icon {
@@ -121,8 +110,8 @@ found in the LICENSE file.
       <div id="brush_handles">
         <template is="dom-repeat" items="[[xAxis.brushes]]" as="brush" index-as="brushIndex">
           <div class="brush_handle"
-              on-track="onTrackBrushHandle_"
-              style$="left: calc([[brush.xPct]] - 5px);">
+               on-track="onTrackBrushHandle_"
+               style$="transform: translateX([[brush.xPct]]) translateX(-5px);">
             <svg
                 height$="[[brushPointSize_(brushSize)]]"
                 width$="[[brushSize]]"
@@ -134,8 +123,7 @@ found in the LICENSE file.
         </template>
       </div>
 
-      <div id="main"
-          on-mousemove="onMouseMoveMain_">
+      <div id="main">
         <svg
             width="100%"
             height$="[[graphHeight]]"
@@ -152,16 +140,6 @@ found in the LICENSE file.
             </template>
           </template>
 
-          <template is="dom-if" if="[[hasCursor_(yAxis)]]">
-            <line
-                x1="0"
-                x2="100%"
-                y1$="[[yAxis.cursor.pct]]"
-                y2$="[[yAxis.cursor.pct]]"
-                style$="stroke: [[yAxis.cursor.color]];">
-            </line>
-          </template>
-
           <template is="dom-if" if="[[xAxis.showTickLines]]">
             <template is="dom-repeat" items="[[xAxis.ticks]]" as="tick">
               <line
@@ -173,31 +151,12 @@ found in the LICENSE file.
             </template>
           </template>
 
-          <template is="dom-if" if="[[hasCursor_(xAxis)]]">
-            <line
-                x1$="[[xAxis.cursor.pct]]"
-                x2$="[[xAxis.cursor.pct]]"
-                y1="0"
-                y2="100%"
-                style$="stroke: [[xAxis.cursor.color]];">
-            </line>
-          </template>
-
           <template is="dom-repeat" items="[[antiBrushes_(xAxis.brushes)]]" as="antiBrush">
             <rect
                 x$="[[antiBrush.start]]"
                 y="0"
                 width$="[[antiBrush.length]]"
                 height="100%">
-            </rect>
-          </template>
-
-          <template is="dom-repeat" items="[[antiBrushes_(yAxis.brushes)]]" as="antiBrush">
-            <rect
-                x="0"
-                y$="[[antiBrush.start]]"
-                width="100%"
-                height$="[[antiBrush.length]]">
             </rect>
           </template>
 
@@ -226,8 +185,8 @@ found in the LICENSE file.
 
             <template is="dom-repeat" items="[[collectIcons_(line)]]" as="datum">
               <foreignObject
-                  x$="[[pct_(datum.xPct)]]"
-                  y$="[[pct_(datum.yPct)]]"
+                  x$="[[datum.xPct]]"
+                  y$="[[datum.yPct]]"
                   class="icon">
                 <body xmlns="http://www.w3.org/1999/xhtml">
                   <iron-icon
@@ -241,19 +200,18 @@ found in the LICENSE file.
         </svg>
 
         <div id="tooltip"
-             style$="left: [[tooltip.left]]; right: [[tooltip.right]]; top: [[tooltip.top]]; bottom: [[tooltip.bottom]];">
-          <template is="dom-if" if="[[isTooltipShowing_(tooltip)]]">
-            <table style$="border-color: [[tooltip.color]];">
-              <template is="dom-repeat" items="[[tooltip.rows]]" as="row" index-as="rowIndex">
-                <tr style$="color: [[row.color]]">
-                  <td colspan$="[[row.colspan]]">[[row.name]]</td>
-                  <template is="dom-if" if="[[!isEqual_(row.colspan, 2)]]">
-                    <td>[[row.value]]</td>
-                  </template>
-                </tr>
-              </template>
-            </table>
-          </template>
+             hidden$="[[tooltipHidden_(tooltip)]]"
+             style$="left: [[tooltip.left]]; right: [[tooltip.right]]; top: [[tooltip.top]]; bottom: [[tooltip.bottom]]; border-color: [[tooltip.color]];">
+          <table>
+            <template is="dom-repeat" items="[[tooltip.rows]]" as="row" index-as="rowIndex">
+              <tr style$="color: [[row.color]]">
+                <td colspan$="[[row.colspan]]">[[row.name]]</td>
+                <template is="dom-if" if="[[!isEqual_(row.colspan, 2)]]">
+                  <td>[[row.value]]</td>
+                </template>
+              </tr>
+            </template>
+          </table>
         </div>
       </div>
 

@@ -3,25 +3,16 @@ available for preview at https://v2spa-dot-chromeperf.appspot.com .
 
 In order to develop or deploy v2spa, a one-time setup is required:
 ```
-pushd common/node_runner/node_runner
-npm install
-sed -i 's/ecmaVersion: 6/ecmaVersion: 9/g' node_modules/hydrolysis/lib/ast-utils/js-parse.js
-popd
-pushd dashboard
-ln -sf ../third_party/polymer-svg-template
+cd dashboard
 ln -sf ../third_party/polymer2
-ln -sf ../third_party/polymer2/bower_components
 ln -sf ../third_party/redux
-ln -sf ../third_party/redux/redux.min.js
-ln -sf ../tracing/third_party/gl-matrix/dist/gl-matrix-min.js
-ln -sf ../tracing/third_party/mannwhitneyu
 ln -sf ../tracing/tracing
-ln -sf ../tracing/tracing_project.py
-popd
+ln -sf polymer2/bower_components
+ln -sf redux/redux.min.js
 ```
 
-In order to deploy app.yaml to v2spa-dot-chromeperf.appspot.com, run
-`dashboard/bin/deploy`. That serves a vulcanized HTML file at `/` and the
+In order to deploy v2spa.yaml to v2spa-dot-chromeperf.appspot.com, run
+`dashboard/bin/deploy_v2spa`. That serves a vulcanized HTML file at `/` and the
 same script request handlers as V1, which is configured in app.yaml and
 continues to be deployed to chromeperf.appspot.com by `dashboard/bin/deploy`.
 

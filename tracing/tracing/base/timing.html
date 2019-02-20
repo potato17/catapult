@@ -76,16 +76,13 @@ tr.exportTo('tr.b', function() {
             this.groupName, this.functionName, this.durationMs);
       }
 
-      // Google Analytics
       if (!(window.ga instanceof Function)) return;
-      for (const filter of Timing.ANALYTICS_FILTERS) {
-        if (!filter(this)) return;
-      }
+      // Google Analytics
       ga('send', {
         hitType: 'event',
         eventCategory: this.groupName,
         eventAction: this.functionName,
-        eventValue: Math.round(this.durationMs),
+        eventValue: this.durationMs,
       });
     }
   }
@@ -123,7 +120,6 @@ tr.exportTo('tr.b', function() {
     }
   }
 
-  Timing.ANALYTICS_FILTERS = [];
   Timing.logVoidMarks = false;
 
   return {

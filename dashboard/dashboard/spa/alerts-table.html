@@ -160,7 +160,7 @@ found in the LICENSE file.
 
               <th>
                 <column-head
-                    name="suite"
+                    name="testSuite"
                     sort-column="[[sortColumn]]"
                     sort-descending="[[sortDescending]]"
                     disabled="[[areAlertGroupsPlaceholders]]"
@@ -204,10 +204,10 @@ found in the LICENSE file.
                 </column-head>
               </th>
 
-              <template is="dom-if" if="[[showCaseColumn]]">
+              <template is="dom-if" if="[[showTestCaseColumn]]">
                 <th>
                   <column-head
-                      name="case"
+                      name="testCase"
                       sort-column="[[sortColumn]]"
                       sort-descending="[[sortDescending]]"
                       disabled="[[areAlertGroupsPlaceholders]]"
@@ -245,7 +245,7 @@ found in the LICENSE file.
             <tbody expandedGroup$="[[isExpandedGroup_(alertGroup.isExpanded, alertGroup.triaged.isExpanded)]]">
               <template is="dom-repeat" items="[[alertGroup.alerts]]" as="alert" index-as="alertIndex">
                 <template is="dom-if" if="[[shouldDisplayAlert_(areAlertGroupsPlaceholders, showingTriaged, alertGroup, alertIndex, alertGroup.triaged.isExpanded)]]">
-                  <tr on-click="onRowClick_">
+                  <tr on-click="onRowTap_">
 
                     <td>
                       <template is="dom-if"
@@ -305,7 +305,7 @@ found in the LICENSE file.
                     </td>
 
                     <td style$="color: [[alert.color]];">
-                      [[breakWords_(alert.suite)]]
+                      [[breakWords_(alert.testSuite)]]
                     </td>
                     <td style$="color: [[alert.color]];">
                       [[breakWords_(alert.measurement)]]
@@ -321,9 +321,9 @@ found in the LICENSE file.
                       [[alert.bot]]
                     </td>
 
-                    <template is="dom-if" if="[[showCaseColumn]]">
+                    <template is="dom-if" if="[[showTestCaseColumn]]">
                       <td style$="color: [[alert.color]];">
-                        [[breakWords_(alert.case)]]
+                        [[breakWords_(alert.testCase)]]
                       </td>
                     </template>
 

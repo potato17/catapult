@@ -37,6 +37,7 @@ from dashboard import layered_cache_delete_expired
 from dashboard import list_monitored_tests
 from dashboard import list_tests
 from dashboard import load_from_prod
+from dashboard import main
 from dashboard import mark_recovered_alerts
 from dashboard import memory_report
 from dashboard import migrate_test_names
@@ -66,11 +67,9 @@ from dashboard.api import sheriffs
 from dashboard.api import test_suites
 from dashboard.api import timeseries
 from dashboard.api import timeseries2
-from dashboard.api import warmup
 
 
 _URL_MAPPING = [
-    ('/_ah/warmup', warmup.WarmupHandler),
     ('/add_histograms', add_histograms.AddHistogramsHandler),
     ('/add_histograms/process', add_histograms.AddHistogramsProcessHandler),
     ('/add_histograms_queue', add_histograms_queue.AddHistogramsQueueHandler),
@@ -116,6 +115,7 @@ _URL_MAPPING = [
     ('/list_monitored_tests', list_monitored_tests.ListMonitoredTestsHandler),
     ('/list_tests', list_tests.ListTestsHandler),
     ('/load_from_prod', load_from_prod.LoadFromProdHandler),
+    ('/', main.MainHandler),
     ('/mark_recovered_alerts',
      mark_recovered_alerts.MarkRecoveredAlertsHandler),
     ('/memory_report', memory_report.MemoryReportHandler),

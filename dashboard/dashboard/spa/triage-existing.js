@@ -54,7 +54,7 @@ tr.exportTo('cp', () => {
       await this.dispatch('toggleOnlyIntersectingBugs', this.statePath);
     }
 
-    async onRecentPerformanceBugClick_(event) {
+    async onRecentPerformanceBugTap_(event) {
       await this.dispatch('recentPerformanceBug', this.statePath,
           event.model.bug.id);
       this.$.bug_input.focus();
@@ -110,9 +110,6 @@ tr.exportTo('cp', () => {
     close: statePath => async(dispatch, getState) => {
       dispatch(Redux.UPDATE(statePath, {isOpen: false}));
     },
-
-    submit: statePath => async(dispatch, getState) => {
-    },
   };
 
   TriageExisting.filterBugs =
@@ -123,10 +120,7 @@ tr.exportTo('cp', () => {
         bug.revisionRange.intersectsRangeInclusive(selectedRange));
     };
 
-
   cp.ElementBase.register(TriageExisting);
 
-  return {
-    TriageExisting,
-  };
+  return {TriageExisting};
 });

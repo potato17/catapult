@@ -6,8 +6,6 @@
 
 import idb from '/idb/idb.js';
 import TASK_QUEUE from './task-queue.js';
-import Timing from './timing.js';
-import analytics from './google-analytics.js';
 
 // Transaction modes
 export const READONLY = 'readonly';
@@ -90,13 +88,11 @@ export class CacheRequestBase {
     return null;
   }
 
-  async respond() {
-    const responsePromise = this.responsePromise.then(response => {
+  respond() {
+    this.fetchEvent.respondWith(this.responsePromise.then(response => {
       this.onResponded();
       return jsonResponse(response);
-    });
-    this.fetchEvent.respondWith(responsePromise);
-    return await responsePromise;
+    }));
   }
 
   async writeDatabase(options) {
@@ -136,30 +132,12 @@ export class CacheRequestBase {
 
   async openDatabase_() {
     if (!CONNECTION_POOL.has(this.databaseName)) {
-      const connection = await this.timePromise('openDatabase_', idb.open(
+      const connection = await idb.open(
           this.databaseName, this.databaseVersion,
-          db => this.upgradeDatabase(db)));
+          db => this.upgradeDatabase(db));
       CONNECTION_POOL.set(this.databaseName, connection);
-
-      // TODO(benjhayden): Monitor this to decide when to evict connections.
-      analytics.sendEvent(
-          'CacheRequestBase', 'CONNECTION_POOL.size', CONNECTION_POOL.size);
     }
     return CONNECTION_POOL.get(this.databaseName);
-  }
-
-  time(action) {
-    return new Timing(
-        this.constructor.name, action, this.fetchEvent.request.url);
-  }
-
-  async timePromise(action, promise) {
-    const timing = this.time(action);
-    try {
-      return await promise;
-    } finally {
-      timing.end();
-    }
   }
 }
 

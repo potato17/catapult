@@ -11,10 +11,6 @@ from dashboard.common import utils
 
 
 OAUTH_CLIENT_ID_WHITELIST = [
-    # This oauth client id is for V2SPA.
-    # TODO(benjhayden) Remove this before launching.
-    '62121018386-rhk28ad5lbqheinh05fgau3shotl2t6c.apps.googleusercontent.com',
-
     # This oauth client id is from Pinpoint.
     '62121018386-aqdfougp0ddn93knqj6g79vvn42ajmrg.apps.googleusercontent.com',
     # This oauth client id is from the 'chromeperf' API console.
@@ -45,8 +41,7 @@ OAUTH_CLIENT_ID_WHITELIST = [
     'chrome-ci-builder@chops-service-accounts.iam.gserviceaccount.com',
     # These oauth client ids are used to upload Android performance metrics.
     '528014426327-fptk0tpfi4orpcol559k77v7bi9onpq5.apps.googleusercontent.com',
-    'android-metrics-dashboard@' +
-    'android-metrics-dashboard.iam.gserviceaccount.com',
+    'android-metrics-dashboard@android-metrics-dashboard.iam.gserviceaccount.com',
     '107857144893180953937',
     # This oauth client id is used by all LUCI binaries. In particular, it will
     # allow accessing the APIs by authorized users that generate tokens via

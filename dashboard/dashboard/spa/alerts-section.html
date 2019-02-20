@@ -8,14 +8,13 @@ found in the LICENSE file.
 <link rel="import" href="/dashboard/spa/alerts-controls.html">
 <link rel="import" href="/dashboard/spa/alerts-request.html">
 <link rel="import" href="/dashboard/spa/alerts-table.html">
-<link rel="import" href="/dashboard/spa/chart-pair.html">
 <link rel="import" href="/dashboard/spa/cp-loading.html">
 <link rel="import" href="/dashboard/spa/element-base.html">
 <link rel="import" href="/dashboard/spa/existing-bug-request.html">
-<link rel="import" href="/dashboard/spa/group-alerts.html">
 <link rel="import" href="/dashboard/spa/new-bug-request.html">
 <link rel="import" href="/dashboard/spa/triage-existing.html">
 <link rel="import" href="/dashboard/spa/triage-new.html">
+<link rel="import" href="/dashboard/static/group_alerts.html">
 <link rel="import" href="/tracing/value/legacy_unit_info.html">
 
 <dom-module id="alerts-section">
@@ -57,7 +56,7 @@ found in the LICENSE file.
         on-sources="onSources_">
     </alerts-controls>
 
-    <cp-loading loading$="[[isLoading_(isLoading, preview.isLoading)]]">
+    <cp-loading loading$="[[isLoading]]">
     </cp-loading>
 
     <template is="dom-if" if="[[!isEmpty_(alertGroups)]]">
@@ -112,21 +111,11 @@ found in the LICENSE file.
 
     <alerts-table
         state-path="[[statePath]]"
-        on-selected="onSelected_"
-        on-alert-click="onAlertClick_"
+        on-select-alert="onSelectAlert_"
         on-sort="onSort_">
     </alerts-table>
 
-    <iron-collapse opened="[[!allTriaged_(alertGroups, showingTriaged)]]">
-      <!-- TODO chart-complex -->
-      <chart-pair
-          id="preview"
-          state-path="[[statePath]].preview"
-          linked-state-path="[[linkedStatePath]]"
-          on-line-count-change="onPreviewLineCountChange_">
-        Select alerts using the checkboxes in the table above to preview their timeseries.
-      </chart-pair>
-    </iron-collapse>
+    <!-- TODO chart-complex -->
   </template>
 </dom-module>
 <script src="/dashboard/spa/alerts-section.js"></script>

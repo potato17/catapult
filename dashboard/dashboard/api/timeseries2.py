@@ -67,7 +67,6 @@ class TimeseriesQuery(object):
     self._max_timestamp = max_timestamp
     self._statistic_columns = []
     self._unsuffixed_test_metadata_keys = []
-    self._test_metadata_keys = []
     self._test_keys = []
     self._units = None
     self._improvement_direction = None
@@ -107,14 +106,11 @@ class TimeseriesQuery(object):
       self._ResolveTimestamps()
       futures.append(self._FetchDiagnostics())
     yield futures
-    with timing.CpuTimeLogger('SortData'):
-      data = sorted(self._data.iteritems())
-    with timing.CpuTimeLogger('FormatCSV'):
-      data = [[datum.get(col) for col in self._columns] for _, datum in data]
     raise ndb.Return({
         'units': self._units,
         'improvement_direction': self._improvement_direction,
-        'data': data,
+        'data': [[datum.get(col) for col in self._columns]
+                 for _, datum in sorted(self._data.iteritems())],
     })
 
   def _ResolveTimestamps(self):
@@ -148,13 +144,12 @@ class TimeseriesQuery(object):
       desc.statistic = statistic
       test_paths.extend(desc.ToTestPathsSync())
 
-    self._test_metadata_keys = [
-        utils.TestMetadataKey(path) for path in test_paths]
-    self._test_metadata_keys.extend(self._unsuffixed_test_metadata_keys)
+    test_metadata_keys = [utils.TestMetadataKey(path) for path in test_paths]
+    test_metadata_keys.extend(self._unsuffixed_test_metadata_keys)
     test_paths.extend(unsuffixed_test_paths)
 
     test_old_keys = [utils.OldStyleTestKey(path) for path in test_paths]
-    self._test_keys = test_old_keys + self._test_metadata_keys
+    self._test_keys = test_old_keys + test_metadata_keys
 
   @ndb.tasklet
   def _FetchTests(self):
@@ -203,12 +198,6 @@ class TimeseriesQuery(object):
     # revisions and annotations are not in any index, so a projection query
     # can't get them.
     if 'revisions' in self._columns or 'annotations' in self._columns:
-      return projection, limit
-
-    # TODO(benjhayden) Remove this if/when the Row index is fixed.
-    # Disable projection queries for timestamp for now. There's just an index
-    # for ascending revision, not descending revision with timestamp.
-    if 'timestamp' in self._columns:
       return projection, limit
 
     # There is no index like (parent_test, -timestamp, revision, value):
@@ -309,8 +298,7 @@ class TimeseriesQuery(object):
 
   @ndb.tasklet
   def _FetchHistograms(self):
-    yield [self._FetchHistogramsForTest(test)
-           for test in self._test_metadata_keys]
+    yield [self._FetchHistogramsForTest(test) for test in self._test_keys]
 
   @ndb.tasklet
   def _FetchHistogramsForTest(self, test):

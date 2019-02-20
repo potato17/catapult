@@ -70,13 +70,25 @@ tr.exportTo('cp', () => {
       12, tr.b.UnitScale.TIME.WEEK, tr.b.UnitScale.TIME.MILLI_SEC);
   RecommendedOptions.OPTION_LIMIT = 5;
 
+  const DEFAULT_RECOMMENDATIONS = [
+    'Chromium Perf Sheriff',
+    'memory:chrome:all_processes:reported_by_chrome:effective_size',
+  ];
+
   RecommendedOptions.reducers = {
     getRecommendations: (rootState) => {
       let optionRecommendations;
       const now = new Date().getTime();
       try {
         optionRecommendations = JSON.parse(localStorage.getItem(
-            RecommendedOptions.STORAGE_KEY));
+            RecommendedOptions.STORAGE_KEY)) || {};
+
+        for (const value of DEFAULT_RECOMMENDATIONS) {
+          if (!(value in optionRecommendations)) {
+            optionRecommendations[value] = [now];
+          }
+        }
+
         for (const [value, dates] of Object.entries(optionRecommendations)) {
           optionRecommendations[value] = dates.map(d => new Date(d)).filter(
               date => ((now - date) < RecommendedOptions.OLD_MS));

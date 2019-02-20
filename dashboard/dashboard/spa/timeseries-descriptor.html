@@ -7,6 +7,7 @@ found in the LICENSE file.
 
 <link rel="import" href="/dashboard/spa/cp-checkbox.html">
 <link rel="import" href="/dashboard/spa/describe-request.html">
+<link rel="import" href="/dashboard/spa/memory-components.html">
 <link rel="import" href="/dashboard/spa/menu-input.html">
 <link rel="import" href="/dashboard/spa/recommended-options.html">
 <link rel="import" href="/dashboard/spa/tag-filter.html">
@@ -18,6 +19,9 @@ found in the LICENSE file.
     <style>
       :host {
         display: flex;
+      }
+      menu-input {
+        margin-right: 8px;
       }
     </style>
 
@@ -71,8 +75,10 @@ found in the LICENSE file.
         <recommended-options slot="top" state-path="[[statePath]].case">
         </recommended-options>
 
-        <tag-filter slot="left" state-path="[[statePath]].case">
-        </tag-filter>
+        <template is="dom-if" if="[[!isEmpty_(case.tags.options)]]">
+          <tag-filter slot="left" state-path="[[statePath]].case">
+          </tag-filter>
+        </template>
       </menu-input>
 
       <cp-checkbox

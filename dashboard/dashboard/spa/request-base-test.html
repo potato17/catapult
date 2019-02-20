@@ -23,24 +23,20 @@ suite('RequestBase', function() {
     window.getAuthorizationHeaders = originalAuthorizationHeaders;
   });
 
-  // HTML imports may not have loaded when suite() is called, but are loaded
-  // when tests are called.
-  function TestRequest(options) {
-    return new class TestRequest extends cp.RequestBase {
-      get url_() {
-        return '/url';
-      }
+  class TestRequest extends cp.RequestBase {
+    get url_() {
+      return '/url';
+    }
 
-      postProcess_(response) {
-        return response.map(x => x * x);
-      }
-    }(options);
+    postProcess_(response) {
+      return response.map(x => x * x);
+    }
   }
 
   test('getAuthorizationHeaders', async() => {
-    window.getAuthorizationHeaders = async() => [
-      ['Authorization', 'test Authorization'],
-    ];
+    window.getAuthorizationHeaders = async() => {
+      return {Authorization: 'test Authorization'};
+    };
     window.fetch = async(url, options) => {
       assert.strictEqual('test Authorization',
           options.headers.get('Authorization'));

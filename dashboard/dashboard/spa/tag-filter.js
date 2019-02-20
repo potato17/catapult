@@ -33,29 +33,29 @@ tr.exportTo('cp', () => {
 
   TagFilter.reducers = {
     filter: state => {
-      let testCases = new Set();
+      let cases = new Set();
       let selectedOptions = [];
       if (state.tags && state.tags.selectedOptions &&
           state.tags.selectedOptions.length) {
         for (const tag of state.tags.selectedOptions) {
           const tagCases = state.tags.map.get(tag);
           if (!tagCases) continue;
-          for (const testCase of tagCases) {
-            testCases.add(testCase);
+          for (const cas of tagCases) {
+            cases.add(cas);
           }
         }
-        testCases = [...testCases].sort();
-        selectedOptions = [...testCases];
+        cases = [...cases].sort();
+        selectedOptions = [...cases];
       } else {
-        testCases = [...state.optionValues].sort();
+        cases = [...state.optionValues].sort();
         selectedOptions = [];
       }
       const options = [];
-      if (testCases.length) {
+      if (cases.length) {
         options.push({
           label: `All test cases`,
           isExpanded: true,
-          options: cp.OptionGroup.groupValues(testCases),
+          options: cp.OptionGroup.groupValues(cases),
         });
       }
       return {...state, options, selectedOptions};

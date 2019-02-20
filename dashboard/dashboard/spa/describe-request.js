@@ -9,7 +9,7 @@ tr.exportTo('cp', () => {
       super(options);
       this.method_ = 'POST';
       this.body_ = new FormData();
-      this.body_.set('test_suite', options.testSuite);
+      this.body_.set('test_suite', options.suite);
     }
 
     get url_() {
@@ -17,19 +17,19 @@ tr.exportTo('cp', () => {
     }
 
     static mergeDescriptor(merged, descriptor) {
-      for (const bot of descriptor.bots) merged.bots.add(bot);
-      for (const measurement of descriptor.measurements) {
+      for (const bot of (descriptor.bots || [])) merged.bots.add(bot);
+      for (const measurement of (descriptor.measurements || [])) {
         merged.measurements.add(measurement);
       }
-      for (const c of descriptor.cases) {
-        merged.cases.add(c);
+      for (const cas of (descriptor.cases || [])) {
+        merged.cases.add(cas);
       }
       for (const [tag, cases] of Object.entries(descriptor.caseTags || {})) {
         if (!merged.caseTags.has(tag)) {
           merged.caseTags.set(tag, new Set());
         }
-        for (const c of cases) {
-          merged.caseTags.get(tag).add(c);
+        for (const cas of cases) {
+          merged.caseTags.get(tag).add(cas);
         }
       }
     }

@@ -40,7 +40,7 @@ suite('chart-base', function() {
           shadePoints: '0,50 50,100 100,50',
           shadeFill: 'hsla(0, 50%, 50%, 0.5)',
           data: [
-            {xPct: '50%', yPct: '50%', icon: 'cp:error', iconColor: 'blue'},
+            {xPct: 50, yPct: 50, icon: 'cp:error', iconColor: 'blue'},
           ],
         },
         {
@@ -86,7 +86,8 @@ suite('chart-base', function() {
 
     assert.strictEqual('50%', chart.$.tooltip.style.left);
     assert.strictEqual('50%', chart.$.tooltip.style.top);
-    assert.strictEqual('purple', chart.$.tooltip.style.borderColor);
+    assert.strictEqual('purple',
+        chart.$.tooltip.querySelector('table').style.borderColor);
     assert.strictEqual('flex', getComputedStyle(chart.$.tooltip).display);
 
     assert.isDefined(tr.ui.b.findDeepElementMatchingPredicate(chart, e =>

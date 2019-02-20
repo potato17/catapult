@@ -5,6 +5,7 @@ Use of this source code is governed by a BSD-style license that can be
 found in the LICENSE file.
 -->
 
+<link rel="import" href="/dashboard/spa/alerts-table.html">
 <link rel="import" href="/dashboard/spa/cp-icons.html">
 <link rel="import" href="/dashboard/spa/cp-switch.html">
 <link rel="import" href="/dashboard/spa/element-base.html">
@@ -79,6 +80,9 @@ found in the LICENSE file.
       }
     </style>
 
+    <chops-signin-aware on-user-update="onUserUpdate_">
+    </chops-signin-aware>
+
     <iron-collapse
         horizontal
         id="sheriff-container"
@@ -88,6 +92,8 @@ found in the LICENSE file.
           state-path="[[statePath]].sheriff"
           on-clear="onSheriffClear_"
           on-option-select="onSheriffSelect_">
+        <recommended-options slot="top" state-path="[[statePath]].sheriff">
+        </recommended-options>
       </menu-input>
     </iron-collapse>
 
@@ -101,6 +107,8 @@ found in the LICENSE file.
           on-clear="onBugClear_"
           on-input-keyup="onBugKeyup_"
           on-option-select="onBugSelect_">
+        <recommended-options slot="top" state-path="[[statePath]].bug">
+        </recommended-options>
       </menu-input>
     </iron-collapse>
 
@@ -114,6 +122,8 @@ found in the LICENSE file.
           on-clear="onReportClear_"
           on-input-keyup="onReportKeyup_"
           on-option-select="onReportSelect_">
+        <recommended-options slot="top" state-path="[[statePath]].report">
+        </recommended-options>
       </menu-input>
     </iron-collapse>
 
@@ -167,7 +177,7 @@ found in the LICENSE file.
       <raised-button
           id="recent-bugs"
           disabled$="[[isEmpty_(recentlyModifiedBugs)]]"
-          on-click="onTapRecentlyModifiedBugs_">
+          on-click="onClickRecentlyModifiedBugs_">
         Recent Bugs
       </raised-button>
 

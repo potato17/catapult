@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<!--
+Copyright 2019 The Chromium Authors. All rights reserved.
+Use of this source code is governed by a BSD-style license that can be
+found in the LICENSE file.
+-->
+
+<script src="/bower_components/webcomponentsjs/webcomponents-loader.js"></script>
+<script src="/bower_components/web-component-tester/browser.js"></script>
+<link rel="import" href="/dashboard/spa/layout-timeseries.html">
+
+<script>
+'use strict';
+suite('layout-timeseries', function() {
+  test('normalizeUnit', async() => {
+    const state = {
+      lines: [
+        {
+          unit: tr.b.Unit.byName.count_smallerIsBetter,
+          data: [
+            {x: 1, y: 3},
+            {x: 2, y: 2},
+            {x: 3, y: 4},
+          ],
+        },
+        {
+          unit: tr.b.Unit.byName.count_biggerIsBetter,
+          data: [
+            {x: 1, y: 30},
+            {x: 2, y: 20},
+            {x: 3, y: 40},
+          ],
+        },
+      ],
+      xAxis: {
+      },
+      yAxis: {
+      },
+    };
+    cp.layoutTimeseries(state);
+    assert.strictEqual();
+  });
+
+  // TODO computeTicks all negative
+  // TODO computeTicks all positive
+  // TODO computeTicks spanning 0, zero negTicks
+  // TODO computeTicks spanning 0, zero posTicks
+  // TODO computeTicks spanning 0, 1 negTick
+  // TODO computeTicks spanning 0, 1 posTick
+  // TODO computeTicks spanning 0, 2 each pos/neg ticks
+
+  // TODO center
+  // TODO normalizeLine
+  // TODO normalize biggerIsBetter together with smallerIsBetter
+  // TODO delta
+  // TODO fixedXAxis
+  // TODO zeroYAxis
+  // TODO xAxis.generateTicks
+  // TODO yAxis.generateTicks
+});
+</script>

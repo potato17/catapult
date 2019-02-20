@@ -101,6 +101,16 @@ class Descriptor(object):
     raise ndb.Return(cls.CONFIGURATION[key])
 
   @classmethod
+  @ndb.tasklet
+  def Warmup(cls):
+    cls._GetConfiguration(COMPLEX_CASES_TEST_SUITES_KEY, [])
+    cls._GetConfiguration(COMPOSITE_TEST_SUITES_KEY, [])
+    cls._GetConfiguration(GROUPABLE_TEST_SUITE_PREFIXES_KEY, [])
+    cls._GetConfiguration(PARTIAL_TEST_SUITES_KEY, [])
+    cls._GetConfiguration(POLY_MEASUREMENT_TEST_SUITES_KEY, [])
+    cls._GetConfiguration(TWO_TWO_TEST_SUITES_KEY, [])
+
+  @classmethod
   def ResetMemoizedConfigurationForTesting(cls):
     cls.CONFIGURATION = {}
 

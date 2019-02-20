@@ -4,7 +4,7 @@ Copyright 2018 The Chromium Authors. All rights reserved.
 Use of this source code is governed by a BSD-style license that can be
 found in the LICENSE file.
 -->
-<title>Chromeperf Dashboard</title>
+<title>Chromium Performance</title>
 
 <custom-style>
 <link rel="stylesheet" href="/dashboard/spa/index.css">
@@ -12,6 +12,8 @@ found in the LICENSE file.
 
 <link rel="import" href="/tracing/base/base.html" data-suppress-import-order>
 <script src="/dashboard/spa/index.js"></script>
-
+<link rel="import" href="/bower_components/polymer/polymer.html" data-suppress-import-order>
+<script src="/redux.min.js"></script>
+<link rel="import" href="/bower_components/polymer-redux/polymer-redux.html">
 <link rel="import" href="/dashboard/spa/chromeperf-app.html" data-suppress-import-order>
 <chromeperf-app state-path="chromeperfApp"></chromeperf-app>

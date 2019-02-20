@@ -23,12 +23,21 @@ tr.exportTo('d', function() {
    * @param {!Alert} b
    * @return {boolean}
    */
-  function shouldMerge(a, b) {
+  function shouldMerge(a, b, groupBugs) {
+    if (groupBugs && a.bug_id && b.bug_id && (a.bug_id === b.bug_id)) {
+      return true;
+    }
     if (!rangeIntersects(a.start_revision, a.end_revision,
         b.start_revision, b.end_revision)) {
       return false;
     }
-    if (!a.relatedNames && !b.relatedNames) return a.testsuite === b.testsuite;
+    if (groupBugs && (a.bug_id !== b.bug_id)) return false;
+    if (!a.relatedNames && !b.relatedNames) {
+      if (a.descriptor && b.descriptor) {
+        return a.descriptor.testSuite === b.descriptor.testSuite;
+      }
+      return a.testsuite === b.testsuite;
+    }
     return isRelated(a, b);
   }
 
@@ -65,10 +74,11 @@ tr.exportTo('d', function() {
    * @param {!Array.<!Alert>} alerts
    * @return {!Array.<!Array.<!Alert>>}
    */
-  function groupAlerts(alerts) {
+  function groupAlerts(alerts, groupBugs) {
     const groups = [];
     for (const alert of alerts) {
-      alert.measurementName = alert.test.split('/')[0];
+      alert.measurementName = alert.descriptor ? alert.descriptor.measurement :
+        alert.test.split('/')[0];
       if (d.MEMORY_PROCESS_RELATED_NAMES.has(alert.measurementName)) {
         alert.relatedNames = d.MEMORY_PROCESS_RELATED_NAMES.get(
             alert.measurementName);
@@ -85,7 +95,7 @@ tr.exportTo('d', function() {
       for (const group of groups) {
         let doMerge = true;
         for (const other of group) {
-          const should = shouldMerge(alert, other);
+          const should = shouldMerge(alert, other, groupBugs);
           if (!should) {
             doMerge = false;
             break;

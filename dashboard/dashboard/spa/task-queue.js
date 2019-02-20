@@ -4,6 +4,8 @@
 */
 'use strict';
 
+import analytics from './google-analytics.js';
+
 const PAUSED = 'paused';
 const RUNNING = 'running';
 const PAUSING = 'pausing';
@@ -14,6 +16,7 @@ const QUEUE = [];
 
 function schedule(task) {
   QUEUE.push(task);
+  // TODO(benjhayden): Monitor queue latency.
 }
 
 function scheduleFlush(delayMs = 1000) {
@@ -32,14 +35,18 @@ async function flush() {
   if (STATE !== PAUSED) return;
   STATE = RUNNING;
 
+  // TODO(benjhayden): Monitor flush duration.
+
   // eslint-disable-next-line no-unmodified-loop-condition
   while (QUEUE.length && (STATE === RUNNING)) {
     const task = QUEUE.shift();
     try {
+      // TODO(benjhayden): Monitor task duration.
       await task();
     } catch (err) {
       // eslint-disable-next-line no-console
       console.warn(err);
+      analytics.sendException(err);
     }
   }
 

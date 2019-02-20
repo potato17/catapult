@@ -4,23 +4,11 @@
 
 import uuid
 
-try:
-  from py_utils import slots_metaclass
-  SlotsMetaclass = slots_metaclass.SlotsMetaclass # pylint: disable=invalid-name
-except ImportError:
-  # TODO(benjhayden): Figure out why py_utils doesn't work in dev_appserver.py
-  SlotsMetaclass = None # pylint: disable=invalid-name
-
 from tracing.value.diagnostics import all_diagnostics
 
 
 class Diagnostic(object):
   __slots__ = '_guid',
-
-  # Ensure that new subclasses remember to specify __slots__ in order to prevent
-  # regressing memory consumption:
-  if SlotsMetaclass:
-    __metaclass__ = SlotsMetaclass
 
   def __init__(self):
     self._guid = None

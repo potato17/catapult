@@ -11,6 +11,25 @@ import SessionIdCacheRequest from './session-id-cache-request.js';
 import SheriffsCacheRequest from './sheriffs-cache-request.js';
 import TestSuitesCacheRequest from './test-suites-cache-request.js';
 import TimeseriesCacheRequest from './timeseries-cache-request.js';
+import analytics from './google-analytics.js';
+
+const channel = new BroadcastChannel('service-worker');
+
+function handleMessage(messageEvent) {
+  switch (messageEvent.data.type) {
+    case 'GOOGLE_ANALYTICS': {
+      const {trackingId, clientId} = messageEvent.data.payload;
+      analytics.configure(trackingId, clientId);
+      break;
+    }
+    default:
+      throw new Error(`Unrecognized message ${messageEvent.data.type}`);
+  }
+}
+
+self.addEventListener('install', () => {
+  channel.addEventListener('message', handleMessage);
+});
 
 self.addEventListener('activate', activateEvent => {
   activateEvent.waitUntil(self.clients.claim());

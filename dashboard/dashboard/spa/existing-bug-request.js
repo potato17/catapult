@@ -14,7 +14,7 @@ tr.exportTo('cp', () => {
     }
 
     get url_() {
-      return '/api/alerts/existing_bug';
+      return '/api/existing_bug';
     }
   }
   return {ExistingBugRequest};

@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<!--
+Copyright 2018 The Chromium Authors. All rights reserved.
+Use of this source code is governed by a BSD-style license that can be
+found in the LICENSE file.
+-->
+
+<link rel="import" href="/dashboard/spa/menu-input.html">
+
+<dom-module id="pivot-section">
+  <template>
+    <style>
+      #controls {
+        align-items: center;
+        display: flex;
+        margin-bottom: 8px;
+      }
+
+      menu-input:not(:first-of-type) {
+        margin-left: 8px;
+      }
+
+      #spacer {
+        flex-grow: 1;
+      }
+
+      #close {
+        align-self: flex-start;
+        flex-shrink: 0;
+      }
+
+      #documentation, #open_url {
+        color: var(--primary-color-dark);
+        flex-shrink: 0;
+      }
+    </style>
+
+    <div id="controls">
+      <menu-input
+          state-path="[[statePath]].testSuites"
+          on-input-keyup="onKeydown_"
+          on-option-select="onSelect_">
+      </menu-input>
+
+      <a id="documentation"
+          href="#"
+          target="_blank"
+          title="Documentation">
+        <iron-icon icon="cp:help"></iron-icon>
+      </a>
+
+      <menu-input
+          state-path="[[statePath]].revisions"
+          on-input-keyup="onKeydown_"
+          on-option-select="onSelect_">
+      </menu-input>
+
+      <span id="spacer">&nbsp;</span>
+
+      <iron-icon id="close" icon="cp:close" on-click="closeSection_">
+      </iron-icon>
+    </div>
+
+    <pivot-table state-path="[[statePath]]">
+    </pivot-table>
+  </template>
+</dom-module>
+<script src="/dashboard/spa/pivot-section.js"></script>

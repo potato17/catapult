@@ -4,6 +4,7 @@
 
 import gae_ts_mon
 import logging
+import os
 import time
 
 
@@ -32,6 +33,9 @@ class WallTimeLogger(object):
 
   def __exit__(self, *unused_args):
     self.seconds = self._Now() - self._start
+    if os.environ.get('REQUEST_URI', '').startswith('/_ah/warmup'):
+      return
+
     logging.info('%s:%s=%f', self._label, self._Suffix(), self.seconds)
     if self._metric:
       self._metric.set(self.seconds, dict(label=self._label))

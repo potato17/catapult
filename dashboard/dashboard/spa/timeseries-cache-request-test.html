@@ -81,7 +81,10 @@ suite('TimeseriesCacheRequest', function() {
       statistic: 'avg',
       levelOfDetail: cp.LEVEL_OF_DETAIL.XY,
     };
-    await deleteDatabase(parameters);
+
+    const databaseName = TimeseriesCacheRequest.databaseName(parameters);
+    await testUtils.flushWriterForTest();
+    await testUtils.deleteDatabaseForTest(databaseName);
 
     const response = mockApiResponse(parameters);
     mockFetch(response);
@@ -106,7 +109,10 @@ suite('TimeseriesCacheRequest', function() {
       statistic: 'avg',
       levelOfDetail: cp.LEVEL_OF_DETAIL.XY,
     };
-    await deleteDatabase(parameters);
+
+    const databaseName = TimeseriesCacheRequest.databaseName(parameters);
+    await testUtils.flushWriterForTest();
+    await testUtils.deleteDatabaseForTest(databaseName);
 
     let response = mockApiResponse(parameters);
     mockFetch(response);
@@ -147,7 +153,10 @@ suite('TimeseriesCacheRequest', function() {
       minRevision: 1,
       maxRevision: 3,
     };
-    await deleteDatabase(parameters);
+
+    const databaseName = TimeseriesCacheRequest.databaseName(parameters);
+    await testUtils.flushWriterForTest();
+    await testUtils.deleteDatabaseForTest(databaseName);
 
     let response = mockApiResponse(parameters);
     mockFetch(response);
@@ -193,7 +202,10 @@ suite('TimeseriesCacheRequest', function() {
       minRevision: 1,
       maxRevision: 3,
     };
-    await deleteDatabase(parameters);
+
+    const databaseName = TimeseriesCacheRequest.databaseName(parameters);
+    await testUtils.flushWriterForTest();
+    await testUtils.deleteDatabaseForTest(databaseName);
 
     let response = mockApiResponse(parameters);
     mockFetch(response);
@@ -247,7 +259,10 @@ suite('TimeseriesCacheRequest', function() {
       minRevision: 1,
       maxRevision: 1,
     };
-    await deleteDatabase(parameters);
+
+    const databaseName = TimeseriesCacheRequest.databaseName(parameters);
+    await testUtils.flushWriterForTest();
+    await testUtils.deleteDatabaseForTest(databaseName);
 
     let response = mockApiResponse(parameters);
     mockFetch(response);

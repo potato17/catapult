@@ -28,13 +28,13 @@ THIRD_PARTY_LIBRARIES = [
     'polymer2/bower_components/chopsui',
     'six',
     'gae_ts_mon',
+    'idb',
 ]
 
 # Files and directories in catapult/dashboard.
 DASHBOARD_FILES = [
     'appengine_config.py',
     'app.yaml',
-    'v2spa.yaml',
     'scripts.yaml',
     'cron.yaml',
     'dashboard',

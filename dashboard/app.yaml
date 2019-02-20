@@ -1,10 +1,8 @@
-# Python Application Configuration
-# https://developers.google.com/appengine/docs/python/config/appconfig
-
 runtime: python27
 api_version: 1
-threadsafe: false
+threadsafe: true
 instance_class: F4_1G
+default_expiration: 20h
 
 libraries:
 - name: jinja2
@@ -63,7 +61,29 @@ handlers:
   upload: gl-matrix-min.js
   secure: always
 
-- url: /.*
+- url: /
+  static_files: index.vulcanized.html
+  upload: index.vulcanized.html
+  secure: always
+  http_headers:
+    Content-Security-Policy: "script-src 'unsafe-inline' https://www.google-analytics.com https://apis.google.com; worker-src 'self'"
+
+#- url: /index.js
+#  static_files: index.min.js
+#  upload: index.min.js
+#  secure: always
+
+- url: /service-worker.js
+  static_files: webpack/service-worker.js
+  upload: webpack/service-worker.js
+  secure: always
+
+- url: /service-worker.js.map
+  static_files: webpack/service-worker.js.map
+  upload: webpack/service-worker.js.map
+  secure: always
+
+- url: /.+
   script: dashboard.dispatcher.APP
   secure: always
 

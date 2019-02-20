@@ -7,6 +7,7 @@
 import cloudstorage
 import json
 import logging
+import os
 import sys
 import uuid
 import zlib
@@ -140,6 +141,9 @@ class AddHistogramsHandler(api_request_handler.ApiRequestHandler):
 
 
 def _LogDebugInfo(histograms):
+  if os.environ.get('REQUEST_URI', '').startswith('/_ah/warmup'):
+    return
+
   hist = histograms.GetFirstHistogram()
   if not hist:
     logging.info('No histograms in data.')
@@ -206,7 +210,8 @@ def ProcessHistogramSet(histogram_dicts):
 
   with timing.WallTimeLogger('ComputeRevision'):
     suite_key = utils.TestKey('%s/%s/%s' % (master, bot, benchmark))
-    logging.info('Suite: %s', suite_key.id())
+    if not os.environ.get('REQUEST_URI', '').startswith('/_ah/warmup'):
+      logging.info('Suite: %s', suite_key.id())
 
     revision = ComputeRevision(histograms)
     logging.info('Revision: %s', revision)

@@ -5,9 +5,10 @@
 'use strict';
 tr.exportTo('cp', () => {
   class TimeseriesDescriptor extends cp.ElementBase {
-    ready() {
+    async ready() {
       super.ready();
-      this.dispatch('ready', this.statePath);
+      await this.dispatch('ready', this.statePath);
+      this.dispatchMatrixChange_();
     }
 
     dispatchMatrixChange_() {
@@ -67,6 +68,7 @@ tr.exportTo('cp', () => {
       measurement.label = 'Measurement';
       if (!measurement.options) measurement.options = [];
       return {
+        ...cp.MemoryComponents.buildState(measurement),
         ...cp.MenuInput.buildState(measurement),
       };
     },
@@ -102,6 +104,25 @@ tr.exportTo('cp', () => {
 
   TimeseriesDescriptor.actions = {
     ready: statePath => async(dispatch, getState) => {
+      const suitesLoaded = TimeseriesDescriptor.actions.loadSuites(
+          statePath)(dispatch, getState);
+
+      const state = Polymer.Path.get(getState(), statePath);
+      if (state && state.suite && state.suite.selectedOptions &&
+          state.suite.selectedOptions.length) {
+        await Promise.all([
+          suitesLoaded,
+          TimeseriesDescriptor.actions.describeSuites(statePath)(
+              dispatch, getState),
+        ]);
+      } else {
+        await suitesLoaded,
+        cp.MenuInput.actions.focus(`${statePath}.suite`)(
+            dispatch, getState);
+      }
+    },
+
+    loadSuites: statePath => async(dispatch, getState) => {
       const request = new cp.TestSuitesRequest({});
       const suites = await request.response;
       dispatch({
@@ -173,6 +194,7 @@ tr.exportTo('cp', () => {
     receiveTestSuites: (state, {suites}, rootState) => {
       const suite = TimeseriesDescriptor.State.suite({suite: {
         isAggregated: state.suite.isAggregated,
+        selectedOptions: state.suite.selectedOptions,
         options: suites,
       }});
       return {...state, suite};

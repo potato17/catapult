@@ -33,10 +33,22 @@ export default class ReportCacheRequest extends CacheRequestBase {
     this.revisions = body.get('revisions').split(',');
   }
 
+  async sendResults_() {
+    await this.parseRequestPromise;
+    let channelName = this.fetchEvent.request.url;
+    channelName += '?' + new URLSearchParams({
+      id: this.templateId,
+      modified: this.templateModified,
+      revisions: this.revisions.join(','),
+    });
+    const sender = new ResultChannelSender(channelName);
+    await sender.send(this.generateResults());
+    this.onResponded();
+  }
+
   respond() {
     this.fetchEvent.respondWith(this.responsePromise.then(jsonResponse));
-    const sender = new ResultChannelSender(this.fetchEvent.request.url);
-    this.fetchEvent.waitUntil(sender.send(this.generateResults()));
+    this.fetchEvent.waitUntil(this.sendResults_());
   }
 
   async* generateResults() {

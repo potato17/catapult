@@ -34,7 +34,11 @@ class MockFetchEvent {
   }
 
   waitUntil(promise) {
-    this.waitUntil = promise;
+    this.waitUntil_ = promise;
+  }
+
+  async wait() {
+    return await this.waitUntil_;
   }
 }
 
@@ -87,10 +91,10 @@ suite('SessionIdCacheRequest', function() {
     let error;
     try {
       await cacheRequest.respond();
+      await fetchEvent.wait();
     } catch (err) {
       error = err.message;
     }
-    if (!error) await cp.timeout(1e4);
     assert.strictEqual(`short_uri expected ${sid} actual invalid`, error);
     const response = await fetchEvent.response;
     assert.strictEqual(sid, response.sid);

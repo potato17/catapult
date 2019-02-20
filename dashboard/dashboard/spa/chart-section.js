@@ -10,11 +10,6 @@ tr.exportTo('cp', () => {
       this.scrollIntoView(true);
     }
 
-    connectedCallback() {
-      super.connectedCallback();
-      this.dispatch('connected', this.statePath);
-    }
-
     isLoading_(isLoading, minimapLayout, chartLayout) {
       if (isLoading) return true;
       if (minimapLayout && minimapLayout.isLoading) return true;
@@ -30,41 +25,12 @@ tr.exportTo('cp', () => {
       return isExpanded && !this.isEmpty_(legend) && this.isEmpty_(histograms);
     }
 
-    testSuiteHref_(testSuites) {
-      return 'http://go/chrome-speed';
-    }
-
-    onTestSuiteSelect_(event) {
-      this.dispatch('describeTestSuites', this.statePath);
+    onMatrixChange_(event) {
       this.dispatch('maybeLoadTimeseries', this.statePath);
     }
 
-    onTestSuiteAggregate_(event) {
-      this.dispatch('aggregateTestSuite', this.statePath);
-    }
-
-    onMeasurementSelect_(event) {
-      this.dispatch('measurement', this.statePath);
-    }
-
-    onBotSelect_(event) {
-      this.dispatch('bot', this.statePath);
-    }
-
-    onBotAggregate_(event) {
-      this.dispatch('aggregateBot', this.statePath);
-    }
-
-    onTestCaseSelect_(event) {
-      this.dispatch('testCase', this.statePath);
-    }
-
-    onTestCaseAggregate_(event) {
-      this.dispatch('aggregateTestCase', this.statePath);
-    }
-
     onStatisticSelect_(event) {
-      this.dispatch('statistic', this.statePath);
+      this.dispatch('maybeLoadTimeseries', this.statePath);
     }
 
     onTitleKeyup_(event) {
@@ -82,13 +48,13 @@ tr.exportTo('cp', () => {
             maxRevision: this.maxRevision,
             title: this.title,
             parameters: {
-              testSuites: [...this.testSuite.selectedOptions],
-              testSuitesAggregated: this.testSuite.isAggregated,
-              measurements: [...this.measurement.selectedOptions],
-              bots: [...this.bot.selectedOptions],
-              botsAggregated: this.bot.isAggregated,
-              testCases: [...this.testCase.selectedOptions],
-              testCasesAggregated: this.testCase.isAggregated,
+              suites: [...this.descriptor.suite.selectedOptions],
+              suitesAggregated: this.descriptor.suite.isAggregated,
+              measurements: [...this.descriptor.measurement.selectedOptions],
+              bots: [...this.descriptor.bot.selectedOptions],
+              botsAggregated: this.descriptor.bot.isAggregated,
+              cases: [...this.descriptor.case.selectedOptions],
+              casesAggregated: this.descriptor.case.isAggregated,
               statistics: [...this.statistic.selectedOptions],
             },
           },
@@ -108,21 +74,6 @@ tr.exportTo('cp', () => {
       this.dispatch('chartClick', this.statePath);
     }
 
-    onDotClick_(event) {
-      this.dispatch('dotClick', this.statePath,
-          event.detail.ctrlKey,
-          event.detail.lineIndex,
-          event.detail.datumIndex);
-    }
-
-    onDotMouseOver_(event) {
-      this.dispatch('dotMouseOver', this.statePath, event.detail.lineIndex);
-    }
-
-    onDotMouseOut_(event) {
-      this.dispatch('dotMouseOut', this.statePath);
-    }
-
     onBrush_(event) {
       this.dispatch('brushChart', this.statePath,
           event.detail.brushIndex,
@@ -138,20 +89,20 @@ tr.exportTo('cp', () => {
       this.dispatch('legendMouseOut', this.statePath);
     }
 
-    onLegendLeafTap_(event) {
-      this.dispatch('legendLeafTap', this.statePath,
+    onLegendLeafClick_(event) {
+      this.dispatch('legendLeafClick', this.statePath,
           event.detail.lineDescriptor);
     }
 
-    async onLegendTap_(event) {
-      this.dispatch('legendTap', this.statePath);
+    async onLegendClick_(event) {
+      this.dispatch('legendClick', this.statePath);
     }
 
-    async onRelatedTabTap_(event) {
+    async onRelatedTabClick_(event) {
       this.dispatch('selectRelatedTab', this.statePath, event.model.tab.name);
     }
 
-    async onSparklineTap_(event) {
+    async onSparklineClick_(event) {
       this.dispatchEvent(new CustomEvent('new-chart', {
         bubbles: true,
         composed: true,
@@ -163,10 +114,6 @@ tr.exportTo('cp', () => {
       this.dispatch('updateLegendColors', this.statePath);
     }
 
-    observeUserEmail_() {
-      this.dispatch('authChange', this.statePath);
-    }
-
     observeRevisions_() {
       this.dispatch('updateSparklineRevisions', this.statePath);
     }
@@ -175,63 +122,57 @@ tr.exportTo('cp', () => {
   ChartSection.State = {
     sectionId: options => options.sectionId || tr.b.GUID.allocateSimple(),
     ...cp.ChartPair.State,
+    descriptor: options => {
+      const params = options.parameters || {};
+
+      // Support old spelling of some parameters including 'test'.
+      if (params.testSuites || params.testCases) {
+        params.suites = params.testSuites;
+        params.suitesAggregated = params.testSuitesAggregated;
+        params.cases = params.testCases;
+        params.casesAggregated = params.testCasesAggregated;
+      }
+
+      return cp.TimeseriesDescriptor.buildState({
+        suite: {
+          selectedOptions: params.suites,
+          isAggregated: params.suitesAggregated,
+        },
+        measurement: {
+          selectedOptions: params.measurements,
+        },
+        bot: {
+          selectedOptions: params.bots,
+          isAggregated: params.botsAggregated,
+        },
+        case: {
+          selectedOptions: params.cases,
+          isAggregated: params.casesAggregated,
+        },
+      });
+    },
     title: options => options.title || '',
     isTitleCustom: options => false,
     legend: options => undefined,
     relatedTabs: options => [],
     selectedLineDescriptorHash: options => options.selectedLineDescriptorHash,
     isLoading: options => false,
-    testSuite: options => cp.ChartParameter.buildState({
-      label: 'Test Suites (loading)',
-      required: true,
-      errorMessage: 'Required',
-      canAggregate: true,
-      isAggregated: (options.parameters || {}).testSuitesAggregated || false,
-      selectedOptions: (options.parameters || {}).testSuites || [],
-    }),
-    bot: options => cp.ChartParameter.buildState({
-      label: 'Bots',
-      required: true,
-      errorMessage: 'Required',
-      alwaysEnabled: false,
-      canAggregate: true,
-      isAggregated: (options.parameters || {}).botsAggregated !== false,
-      selectedOptions: (options.parameters || {}).bots || [],
-    }),
-    measurement: options => cp.ChartParameter.buildState({
-      label: 'Measurements',
-      required: true,
-      errorMessage: 'Required',
-      alwaysEnabled: false,
-      canAggregate: false,
-      selectedOptions: (options.parameters || {}).measurements || [],
-    }),
-    testCase: options => cp.ChartParameter.buildState({
-      label: 'Test Cases',
-      alwaysEnabled: false,
-      canAggregate: true,
-      isAggregated: (options.parameters || {}).testCasesAggregated !== false,
-      selectedOptions: (options.parameters || {}).testCases || [],
-      tags: {
-        selectedOptions: (options.parameters || {}).testCaseTags || [],
-      },
-    }),
-    statistic: options => cp.ChartParameter.buildState({
-      label: 'Statistics',
-      required: true,
-      errorMessage: 'Required',
-      canAggregate: false,
-      selectedOptions: (options.parameters || {}).statistics || ['avg'],
-      options: [
-        'avg',
-        'std',
-        'count',
-        'min',
-        'max',
-        'sum',
-        /* TODO 'median', 'iqr', '90%', '95%', '99%', */
-      ],
-    }),
+    statistic: options => {
+      let selectedOptions = ['avg'];
+      if (options) {
+        if (options.statistics) selectedOptions = options.statistics;
+        if (options.parameters && options.parameters.statistics) {
+          // Support old format.
+          selectedOptions = options.parameters.statistics;
+        }
+      }
+      return cp.MenuInput.buildState({
+        label: 'Statistics',
+        required: true,
+        selectedOptions,
+        options: ['avg', 'std', 'count', 'min', 'max', 'sum'],
+      });
+    },
     selectedRelatedTabName: options => options.selectedRelatedTabName || '',
     histograms: options => undefined,
   };
@@ -245,133 +186,12 @@ tr.exportTo('cp', () => {
       // ChartSection only needs the linkedStatePath property to forward to
       // ChartPair.
     }),
-    userEmail: {statePath: 'userEmail'},
   };
-  ChartSection.observers = ['observeUserEmail_(userEmail)'];
-
   ChartSection.observers = [
     'observeRevisions_(minRevision, maxRevision)',
   ];
 
   ChartSection.actions = {
-    connected: statePath => async(dispatch, getState) => {
-      const state = Polymer.Path.get(getState(), statePath);
-      ChartSection.actions.loadTestSuites(statePath)(dispatch, getState);
-      if (state && state.testSuite && state.testSuite.selectedOptions &&
-          state.testSuite.selectedOptions.length) {
-        await ChartSection.actions.describeTestSuites(statePath)(
-            dispatch, getState);
-        ChartSection.actions.maybeLoadTimeseries(statePath)(dispatch, getState);
-      } else {
-        cp.MenuInput.actions.focus(`${statePath}.testSuite`)(
-            dispatch, getState);
-      }
-    },
-
-    authChange: statePath => async(dispatch, getState) => {
-      ChartSection.actions.loadTestSuites(statePath)(dispatch, getState);
-    },
-
-    loadTestSuites: statePath => async(dispatch, getState) => {
-      const rootState = getState();
-      const testSuites = await cp.TeamFilter.get(rootState.teamName).testSuites(
-          await cp.ReadTestSuites());
-      dispatch({
-        type: ChartSection.reducers.receiveTestSuites.name,
-        statePath,
-        testSuites,
-      });
-    },
-
-    describeTestSuites: statePath => async(dispatch, getState) => {
-      const mergedDescriptor = {
-        measurements: new Set(),
-        bots: new Set(),
-        testCases: new Set(),
-        testCaseTags: new Map(),
-      };
-      let state = Polymer.Path.get(getState(), statePath);
-      if (state.testSuite.selectedOptions.length === 0) {
-        dispatch({
-          type: ChartSection.reducers.receiveDescriptor.name,
-          statePath,
-          descriptor: mergedDescriptor,
-        });
-        dispatch({
-          type: ChartSection.reducers.finalizeParameters.name,
-          statePath,
-        });
-        return;
-      }
-
-      // Test suite descriptors might already be in local memory, or it might
-      // take the backend up to a minute to compute them, or it might take a
-      // couple of seconds to serve them from memcache, so fetch them in
-      // parallel.
-      const testSuites = new Set(state.testSuite.selectedOptions);
-      const descriptors = state.testSuite.selectedOptions.map(testSuite =>
-        new cp.DescribeRequest({testSuite}).response);
-      for await (const {results, errors} of new cp.BatchIterator(descriptors)) {
-        state = Polymer.Path.get(getState(), statePath);
-        if (!state.testSuite || !tr.b.setsEqual(
-            testSuites, new Set(state.testSuite.selectedOptions))) {
-          // The user changed the set of selected testSuites, so stop handling
-          // the old set of testSuites. The new set of testSuites will be
-          // handled by a new dispatch of this action creator.
-          return;
-        }
-        // TODO display errors
-        for (const descriptor of results) {
-          if (!descriptor) continue;
-          cp.DescribeRequest.mergeDescriptor(mergedDescriptor, descriptor);
-        }
-        dispatch({
-          type: ChartSection.reducers.receiveDescriptor.name,
-          statePath,
-          descriptor: mergedDescriptor,
-        });
-      }
-      dispatch({
-        type: ChartSection.reducers.finalizeParameters.name,
-        statePath,
-      });
-
-      state = Polymer.Path.get(getState(), statePath);
-
-      if (state.measurement.selectedOptions.length === 0) {
-        cp.MenuInput.actions.focus(`${statePath}.measurement`)(
-            dispatch, getState);
-      }
-    },
-
-    aggregateTestSuite: statePath => async(dispatch, getState) => {
-      ChartSection.actions.maybeLoadTimeseries(statePath)(dispatch, getState);
-    },
-
-    measurement: statePath => async(dispatch, getState) => {
-      ChartSection.actions.maybeLoadTimeseries(statePath)(dispatch, getState);
-    },
-
-    bot: statePath => async(dispatch, getState) => {
-      ChartSection.actions.maybeLoadTimeseries(statePath)(dispatch, getState);
-    },
-
-    aggregateBot: statePath => async(dispatch, getState) => {
-      ChartSection.actions.maybeLoadTimeseries(statePath)(dispatch, getState);
-    },
-
-    testCase: statePath => async(dispatch, getState) => {
-      ChartSection.actions.maybeLoadTimeseries(statePath)(dispatch, getState);
-    },
-
-    aggregateTestCase: statePath => async(dispatch, getState) => {
-      ChartSection.actions.maybeLoadTimeseries(statePath)(dispatch, getState);
-    },
-
-    statistic: statePath => async(dispatch, getState) => {
-      ChartSection.actions.maybeLoadTimeseries(statePath)(dispatch, getState);
-    },
-
     setTitle: (statePath, title) => async(dispatch, getState) => {
       dispatch(Redux.UPDATE(statePath, {title, isTitleCustom: true}));
     },
@@ -397,8 +217,8 @@ tr.exportTo('cp', () => {
     maybeLoadTimeseries: statePath => async(dispatch, getState) => {
       // If the first 3 components are filled, then load the timeseries.
       const state = Polymer.Path.get(getState(), statePath);
-      if (state.testSuite.selectedOptions.length &&
-          state.measurement.selectedOptions.length &&
+      if (state.descriptor.suite.selectedOptions.length &&
+          state.descriptor.measurement.selectedOptions.length &&
           state.statistic.selectedOptions.length) {
         ChartSection.actions.loadTimeseries(statePath)(dispatch, getState);
       } else {
@@ -433,16 +253,6 @@ tr.exportTo('cp', () => {
       });
 
       const state = Polymer.Path.get(getState(), statePath);
-
-      // Wait to populateColumns until after the user selects a memory
-      // measurement.
-      if (!state.measurement.columns.length &&
-          state.measurement.selectedOptions.filter(
-              m => m.startsWith('memory:')).length) {
-        cp.MenuInput.actions.populateColumns(
-            `${statePath}.measurement`)(dispatch, getState);
-      }
-
       if (state.selectedLineDescriptorHash) {
         // Restore from URL. This needs to be in the action creator because
         // sha is async.
@@ -507,48 +317,49 @@ tr.exportTo('cp', () => {
       });
     },
 
-    dotClick: (statePath, ctrlKey, lineIndex, datumIndex) =>
-      async(dispatch, getState) => {
-        // TODO load histograms
-      },
-
-    dotMouseOver: (statePath, lineIndex) => async(dispatch, getState) => {
-    },
-
-    dotMouseOut: (statePath, lineIndex) => async(dispatch, getState) => {
-    },
-
     legendMouseOver: (statePath, lineDescriptor) =>
       async(dispatch, getState) => {
+        const chartPath = statePath + '.chartLayout';
         const state = Polymer.Path.get(getState(), statePath);
         lineDescriptor = JSON.stringify(lineDescriptor);
         for (let lineIndex = 0; lineIndex < state.chartLayout.lines.length;
           ++lineIndex) {
-          if (JSON.stringify(state.chartLayout.lines[lineIndex].descriptor) ===
+          const line = state.chartLayout.lines[lineIndex];
+          if (JSON.stringify(line.descriptor) ===
               lineDescriptor) {
             cp.ChartBase.actions.boldLine(
-                statePath + '.chartLayout', lineIndex)(dispatch, getState);
+                chartPath, lineIndex)(dispatch, getState);
+            dispatch({
+              type: cp.ChartTimeseries.reducers.mouseYTicks.name,
+              statePath: chartPath,
+              line,
+            });
             break;
           }
         }
       },
 
     legendMouseOut: statePath => async(dispatch, getState) => {
-      cp.ChartBase.actions.unboldLines(statePath + '.chartLayout')(
-          dispatch, getState);
-    },
-
-    legendLeafTap: (statePath, lineDescriptor) => async(dispatch, getState) => {
+      const chartPath = statePath + '.chartLayout';
+      cp.ChartBase.actions.unboldLines(chartPath)(dispatch, getState);
       dispatch({
-        type: ChartSection.reducers.selectLine.name,
-        statePath,
-        lineDescriptor,
-        selectedLineDescriptorHash: await cp.sha(
-            cp.ChartTimeseries.stringifyDescriptor(lineDescriptor)),
+        type: cp.ChartTimeseries.reducers.mouseYTicks.name,
+        statePath: chartPath,
       });
     },
 
-    legendTap: statePath => async(dispatch, getState) => {
+    legendLeafClick: (statePath, lineDescriptor) =>
+      async(dispatch, getState) => {
+        dispatch({
+          type: ChartSection.reducers.selectLine.name,
+          statePath,
+          lineDescriptor,
+          selectedLineDescriptorHash: await cp.sha(
+              cp.ChartTimeseries.stringifyDescriptor(lineDescriptor)),
+        });
+      },
+
+    legendClick: statePath => async(dispatch, getState) => {
       dispatch({
         type: ChartSection.reducers.deselectLine.name,
         statePath,
@@ -612,25 +423,6 @@ tr.exportTo('cp', () => {
       };
     },
 
-    receiveTestSuites: (state, action, rootState) => {
-      const groupedOptions = cp.OptionGroup.groupValues(action.testSuites);
-      if (rootState.userEmail &&
-          (groupedOptions.length < state.testSuite.options.length)) {
-        // The loadTestSuites() in actions.connected might race with the
-        // loadTestSuites() in actions.authChange. If the internal test suites
-        // load first then the public test suites load, ignore the public test
-        // suites. If the user signs out, then userEmail will become
-        // the empty string, so load the public test suites.
-        return state;
-      }
-      const testSuite = {
-        ...state.testSuite,
-        options: groupedOptions,
-        label: `Test Suites (${action.testSuites.length})`,
-      };
-      return {...state, testSuite};
-    },
-
     updateLegendColors: (state, action, rootState) => {
       if (!state.legend) return state;
       const colorMap = new Map();
@@ -651,7 +443,7 @@ tr.exportTo('cp', () => {
 
     receiveDescriptor: (state, {descriptor}, rootState) => {
       const measurement = {
-        ...state.measurement,
+        ...state.descriptor.measurement,
         optionValues: descriptor.measurements,
         options: cp.OptionGroup.groupValues(descriptor.measurements),
         label: `Measurements (${descriptor.measurements.size})`,
@@ -659,7 +451,7 @@ tr.exportTo('cp', () => {
 
       const botOptions = cp.OptionGroup.groupValues(descriptor.bots);
       const bot = {
-        ...state.bot,
+        ...state.descriptor.bot,
         optionValues: descriptor.bots,
         options: botOptions.map(option => {
           return {...option, isExpanded: true};
@@ -667,38 +459,47 @@ tr.exportTo('cp', () => {
         label: `Bots (${descriptor.bots.size})`,
       };
 
-      const testCaseOptions = [];
-      if (descriptor.testCases.size) {
-        testCaseOptions.push({
+      const caseOptions = [];
+      if (descriptor.cases.size) {
+        caseOptions.push({
           label: `All test cases`,
           isExpanded: true,
-          options: cp.OptionGroup.groupValues(descriptor.testCases),
+          options: cp.OptionGroup.groupValues(descriptor.cases),
         });
       }
 
-      const testCase = cp.ChartParameter.reducers.tagFilter({
-        ...state.testCase,
-        optionValues: descriptor.testCases,
-        options: testCaseOptions,
-        label: `Test cases (${descriptor.testCases.size})`,
+      const cas = cp.TagFilter.reducers.filter({
+        ...state.descriptor.case,
+        optionValues: descriptor.cases,
+        options: caseOptions,
+        label: `Test cases (${descriptor.cases.size})`,
         tags: {
-          ...state.testCase.tags,
-          map: descriptor.testCaseTags,
-          optionValues: new Set(descriptor.testCaseTags.keys()),
-          options: cp.OptionGroup.groupValues(descriptor.testCaseTags.keys()),
+          ...state.descriptor.case.tags,
+          map: descriptor.caseTags,
+          optionValues: new Set(descriptor.caseTags.keys()),
+          options: cp.OptionGroup.groupValues(descriptor.caseTags.keys()),
         },
       });
 
-      return {...state, measurement, bot, testCase};
+      return {
+        ...state,
+        descriptor: {
+          ...state.descriptor,
+          measurement,
+          bot,
+          case: cas,
+        },
+      };
     },
 
     finalizeParameters: (state, action, rootState) => {
-      const measurement = {...state.measurement};
+      const measurement = {...state.descriptor.measurement};
       if (measurement.optionValues.size === 1) {
         measurement.selectedOptions = [...measurement.optionValues];
       } else {
-        measurement.selectedOptions = state.measurement.selectedOptions.filter(
-            m => state.measurement.optionValues.has(m));
+        measurement.selectedOptions =
+          state.descriptor.measurement.selectedOptions.filter(
+              m => state.descriptor.measurement.optionValues.has(m));
       }
       const recommendedMeasurements = [
         {
@@ -719,7 +520,7 @@ tr.exportTo('cp', () => {
         measurement.recommended = {options: recommendedMeasurements};
       }
 
-      const bot = {...state.bot};
+      const bot = {...state.descriptor.bot};
       if ((bot.optionValues.size === 1) ||
           ((bot.selectedOptions.length === 1) &&
            (bot.selectedOptions[0] === '*'))) {
@@ -729,13 +530,13 @@ tr.exportTo('cp', () => {
           bot.optionValues.has(b));
       }
 
-      const testCase = {
-        ...state.testCase,
-        selectedOptions: state.testCase.selectedOptions.filter(t =>
-          state.testCase.optionValues.has(t)),
+      const cas = {
+        ...state.descriptor.case,
+        selectedOptions: state.descriptor.case.selectedOptions.filter(t =>
+          state.descriptor.case.optionValues.has(t)),
       };
 
-      return {...state, measurement, bot, testCase};
+      return {...state, measurement, bot, case: cas};
     },
 
     receiveHistograms: (state, action, rootState) => {
@@ -780,24 +581,23 @@ tr.exportTo('cp', () => {
       };
 
       const sparkLayout = cp.ChartTimeseries.buildState({});
-      sparkLayout.dotRadius = 0;
       sparkLayout.yAxis.generateTicks = false;
       sparkLayout.xAxis.generateTicks = false;
       sparkLayout.graphHeight = 100;
 
       function maybeAddParameterTab(propertyName, tabName, matrixName) {
-        let options = state[propertyName].selectedOptions;
+        let options = state.descriptor[propertyName].selectedOptions;
         if (options.length === 0) {
-          // If zero testSuites or bots are selected, then buildRelatedTabs
-          // wouldn't be called. If zero testCases are selected, then build
-          // sparklines for all available testCases.
-          options = []; // Do not append to state[propertyName].selectedOptions!
-          for (const option of state[propertyName].options) {
+          // If zero suites or bots are selected, then buildRelatedTabs
+          // wouldn't be called. If zero cases are selected, then build
+          // sparklines for all available cases.
+          options = []; // Do not append to [propertyName].selectedOptions!
+          for (const option of state.descriptor[propertyName].options) {
             options.push(...cp.OptionGroup.getValuesFromOption(option));
           }
           if (options.length === 0) return;
         } else if (options.length === 1 ||
-                   !state[propertyName].isAggregated) {
+                   !state.descriptor[propertyName].isAggregated) {
           return;
         }
         relatedTabs.push({
@@ -809,17 +609,17 @@ tr.exportTo('cp', () => {
             })),
         });
       }
-      maybeAddParameterTab('testSuite', 'Test suites', 'testSuiteses');
+      maybeAddParameterTab('suite', 'Test suites', 'suiteses');
 
       const rails = ['Response', 'Animation', 'Idle', 'Load', 'Startup'];
 
-      const measurements = state.measurement.selectedOptions;
+      const measurements = state.descriptor.measurement.selectedOptions;
       // TODO use RelatedNameMaps instead of this hard-coded mess
       const processSparklines = [];
       const componentSparklines = [];
       const railSparklines = [];
 
-      if (state.testSuite.selectedOptions.filter(
+      if (state.descriptor.suite.selectedOptions.filter(
           ts => ts.startsWith('v8:browsing')).length) {
         if (measurements.filter(
             m => (!rails.includes(m.split('_')[0]) &&
@@ -884,7 +684,7 @@ tr.exportTo('cp', () => {
         }
       }
 
-      for (const measurement of state.measurement.selectedOptions) {
+      for (const measurement of state.descriptor.measurement.selectedOptions) {
         const measurementAvg = measurement + '_avg';
         if (d.MEMORY_PROCESS_RELATED_NAMES.has(measurementAvg)) {
           for (let relatedMeasurement of d.MEMORY_PROCESS_RELATED_NAMES.get(
@@ -939,7 +739,7 @@ tr.exportTo('cp', () => {
       }
 
       maybeAddParameterTab('bot', 'Bots', 'botses');
-      maybeAddParameterTab('testCase', 'Test cases', 'testCaseses');
+      maybeAddParameterTab('case', 'Test cases', 'caseses');
 
       if (state.selectedRelatedTabName) {
         const selectedRelatedTabIndex = relatedTabs.findIndex(tab =>
@@ -984,7 +784,7 @@ tr.exportTo('cp', () => {
 
   ChartSection.createSparkline = (name, sparkLayout, revisions, matrix) => {
     return {
-      name: cp.AlertsSection.breakWords(name),
+      name: cp.breakWords(name),
       chartOptions: {
         parameters: ChartSection.parametersFromMatrix(matrix),
         ...revisions,
@@ -1000,14 +800,14 @@ tr.exportTo('cp', () => {
   ChartSection.newStateOptionsFromQueryParams = routeParams => {
     return {
       parameters: {
-        testSuites: routeParams.getAll('testSuite'),
-        testSuitesAggregated: routeParams.get('aggSuites') !== null,
+        suites: routeParams.getAll('suite') || routeParams.getAll('testSuite'),
+        suitesAggregated: routeParams.get('aggSuites') !== null,
         measurements: routeParams.getAll('measurement'),
         bots: routeParams.getAll('bot'),
         botsAggregated: routeParams.get('splitBots') === null,
-        testCases: routeParams.getAll('testCase'),
-        testCaseTags: routeParams.getAll('caseTag'),
-        testCasesAggregated: routeParams.get('splitCases') === null,
+        cases: routeParams.getAll('case'),
+        caseTags: routeParams.getAll('caseTag'),
+        casesAggregated: routeParams.get('splitCases') === null,
         statistics: routeParams.get('stat') ? routeParams.getAll('stat') :
           ['avg'],
       },
@@ -1023,21 +823,21 @@ tr.exportTo('cp', () => {
   };
 
   ChartSection.createLineDescriptors = ({
-    testSuiteses, measurements, botses, testCaseses, statistics,
+    suiteses, measurements, botses, caseses, statistics,
     buildTypes,
   }) => {
     const lineDescriptors = [];
-    for (const testSuites of testSuiteses) {
+    for (const suites of suiteses) {
       for (const measurement of measurements) {
         for (const bots of botses) {
-          for (const testCases of testCaseses) {
+          for (const cases of caseses) {
             for (const statistic of statistics) {
               for (const buildType of buildTypes) {
                 lineDescriptors.push({
-                  testSuites,
+                  suites,
                   measurement,
                   bots,
-                  testCases,
+                  cases,
                   statistic,
                   buildType,
                 });
@@ -1058,21 +858,21 @@ tr.exportTo('cp', () => {
   }
 
   ChartSection.buildLegend = ({
-    testSuiteses, measurements, botses, testCaseses, statistics,
+    suiteses, measurements, botses, caseses, statistics,
     buildTypes,
   }) => {
     // Return [{label, children: [{label, lineDescriptor, color}]}}]
-    let legendItems = testSuiteses.map(testSuites =>
-      legendEntry(testSuites[0], measurements.map(measurement =>
+    let legendItems = suiteses.map(suites =>
+      legendEntry(suites[0], measurements.map(measurement =>
         legendEntry(measurement, botses.map(bots =>
-          legendEntry(bots[0], testCaseses.map(testCases =>
-            legendEntry(testCases[0], statistics.map(statistic =>
+          legendEntry(bots[0], caseses.map(cases =>
+            legendEntry(cases[0], statistics.map(statistic =>
               legendEntry(statistic, buildTypes.map(buildType => {
                 const lineDescriptor = {
-                  testSuites,
+                  suites,
                   measurement,
                   bots,
-                  testCases,
+                  cases,
                   statistic,
                   buildType,
                 };
@@ -1116,33 +916,33 @@ tr.exportTo('cp', () => {
   ChartSection.parameterMatrix = state => {
     // Aggregated parameters look like [[a, b, c]].
     // Unaggregated parameters look like [[a], [b], [c]].
-    let testSuiteses = state.testSuite.selectedOptions;
-    if (state.testSuite.isAggregated) {
-      testSuiteses = [testSuiteses];
+    let suiteses = state.descriptor.suite.selectedOptions;
+    if (state.descriptor.suite.isAggregated) {
+      suiteses = [suiteses];
     } else {
-      testSuiteses = testSuiteses.map(testSuite => [testSuite]);
+      suiteses = suiteses.map(s => [s]);
     }
-    let botses = state.bot.selectedOptions;
-    if (state.bot.isAggregated) {
+    let botses = state.descriptor.bot.selectedOptions;
+    if (state.descriptor.bot.isAggregated) {
       botses = [botses];
     } else {
       botses = botses.map(bot => [bot]);
     }
-    let testCaseses = state.testCase.selectedOptions.filter(x => x);
-    if (state.testCase.isAggregated) {
-      testCaseses = [testCaseses];
+    let caseses = state.descriptor.case.selectedOptions.filter(x => x);
+    if (state.descriptor.case.isAggregated) {
+      caseses = [caseses];
     } else {
-      testCaseses = testCaseses.map(testCase => [testCase]);
+      caseses = caseses.map(c => [c]);
     }
-    if (testCaseses.length === 0) testCaseses.push([]);
-    const measurements = state.measurement.selectedOptions;
+    if (caseses.length === 0) caseses.push([]);
+    const measurements = state.descriptor.measurement.selectedOptions;
     const statistics = state.statistic.selectedOptions;
     const buildTypes = ['test'];
     return {
-      testSuiteses,
+      suiteses,
       measurements,
       botses,
-      testCaseses,
+      caseses,
       statistics,
       buildTypes,
     };
@@ -1150,40 +950,70 @@ tr.exportTo('cp', () => {
 
   ChartSection.parametersFromMatrix = matrix => {
     const parameters = {
-      testSuites: [],
-      testSuitesAggregated: ((matrix.testSuiteses.length === 1) &&
-                             (matrix.testSuiteses[0].length > 1)),
+      suites: [],
+      suitesAggregated: ((matrix.suiteses.length === 1) &&
+                             (matrix.suiteses[0].length > 1)),
       measurements: matrix.measurements,
       bots: [],
       botsAggregated: ((matrix.botses.length === 1) &&
                        (matrix.botses[0].length > 1)),
-      testCases: [],
-      testCasesAggregated: ((matrix.testCaseses.length === 1) &&
-                            (matrix.testCaseses[0].length > 1)),
+      cases: [],
+      casesAggregated: ((matrix.caseses.length === 1) &&
+                            (matrix.caseses[0].length > 1)),
       statistics: matrix.statistics,
     };
-    for (const testSuites of matrix.testSuiteses) {
-      parameters.testSuites.push(...testSuites);
+    for (const suites of matrix.suiteses) {
+      parameters.suites.push(...suites);
     }
     for (const bots of matrix.botses) {
       parameters.bots.push(...bots);
     }
-    for (const testCases of matrix.testCaseses) {
-      parameters.testCases.push(...testCases);
+    for (const cases of matrix.caseses) {
+      parameters.cases.push(...cases);
     }
     return parameters;
   };
 
+  /*
+  Don't change the session state (aka options) format!
+  {
+    parameters: {
+      suites: Array<string>,
+      suitesAggregated: boolean,
+      measurements: Array<string>,
+      bots: Array<string>,
+      botsAggregated: boolean,
+      cases: Array<string>
+      casesAggregated: boolean,
+      statistics: Array<string>,
+    },
+    isLinked: boolean,
+    isExpanded: boolean,
+    title: string,
+    minRevision: number,
+    maxRevision: number,
+    zeroYAxis: boolean,
+    fixedXAxis: boolean,
+    mode: string,
+    selectedRelatedTabName: string,
+    selectedLineDescriptorHash: string,
+  }
+
+  This format is slightly different from ChartSection.State, which has
+  `descriptor` (which does not include statistics) instead of `parameters`
+  (which does include statistics).
+  */
+
   ChartSection.getSessionState = state => {
     return {
       parameters: {
-        testSuites: state.testSuite.selectedOptions,
-        testSuitesAggregated: state.testSuite.isAggregated,
-        measurements: state.measurement.selectedOptions,
-        bots: state.bot.selectedOptions,
-        botsAggregated: state.bot.isAggregated,
-        testCases: state.testCase.selectedOptions,
-        testCasesAggregated: state.testCase.isAggregated,
+        suites: state.descriptor.suite.selectedOptions,
+        suitesAggregated: state.descriptor.suite.isAggregated,
+        measurements: state.descriptor.measurement.selectedOptions,
+        bots: state.descriptor.bot.selectedOptions,
+        botsAggregated: state.descriptor.bot.isAggregated,
+        cases: state.descriptor.case.selectedOptions,
+        casesAggregated: state.descriptor.case.isAggregated,
         statistics: state.statistic.selectedOptions,
       },
       isLinked: state.isLinked,
@@ -1200,43 +1030,44 @@ tr.exportTo('cp', () => {
   };
 
   ChartSection.getRouteParams = state => {
-    const allBotsSelected = state.bot.selectedOptions.length ===
-        cp.OptionGroup.countDescendents(state.bot.options);
+    const allBotsSelected = state.descriptor.bot.selectedOptions.length ===
+        cp.OptionGroup.countDescendents(state.descriptor.bot.options);
 
-    if (state.testSuite.selectedOptions.length > 2 ||
-        state.testCase.selectedOptions.length > 2 ||
-        state.measurement.selectedOptions.length > 2 ||
-        ((state.bot.selectedOptions.length > 2) && !allBotsSelected)) {
+    if (state.descriptor.suite.selectedOptions.length > 2 ||
+        state.descriptor.case.selectedOptions.length > 2 ||
+        state.descriptor.measurement.selectedOptions.length > 2 ||
+        ((state.descriptor.bot.selectedOptions.length > 2) &&
+         !allBotsSelected)) {
       return undefined;
     }
 
     const routeParams = new URLSearchParams();
-    for (const testSuite of state.testSuite.selectedOptions) {
-      routeParams.append('testSuite', testSuite);
+    for (const suite of state.descriptor.suite.selectedOptions) {
+      routeParams.append('suite', suite);
     }
-    if (state.testSuite.isAggregated) {
+    if (state.descriptor.suite.isAggregated) {
       routeParams.set('aggSuites', '');
     }
-    for (const measurement of state.measurement.selectedOptions) {
+    for (const measurement of state.descriptor.measurement.selectedOptions) {
       routeParams.append('measurement', measurement);
     }
     if (allBotsSelected) {
       routeParams.set('bot', '*');
     } else {
-      for (const bot of state.bot.selectedOptions) {
+      for (const bot of state.descriptor.bot.selectedOptions) {
         routeParams.append('bot', bot);
       }
     }
-    if (!state.bot.isAggregated) {
+    if (!state.descriptor.bot.isAggregated) {
       routeParams.set('splitBots', '');
     }
-    for (const testCase of state.testCase.selectedOptions) {
-      routeParams.append('testCase', testCase);
+    for (const cas of state.descriptor.case.selectedOptions) {
+      routeParams.append('case', cas);
     }
-    for (const tag of state.testCase.tags.selectedOptions) {
+    for (const tag of state.descriptor.case.tags.selectedOptions) {
       routeParams.append('caseTag', tag);
     }
-    if (!state.testCase.isAggregated) {
+    if (!state.descriptor.case.isAggregated) {
       routeParams.set('splitCases', '');
     }
     const statistics = state.statistic.selectedOptions;
@@ -1274,36 +1105,38 @@ tr.exportTo('cp', () => {
 
   ChartSection.computeTitle = state => {
     if (state.isTitleCustom) return state.title;
-    let title = state.measurement.selectedOptions.join(', ');
-    if (state.bot.selectedOptions.length > 0 &&
-        state.bot.selectedOptions.length < 4) {
-      title += ' on ' + state.bot.selectedOptions.join(', ');
+    let title = state.descriptor.measurement.selectedOptions.join(', ');
+    if (state.descriptor.bot.selectedOptions.length > 0 &&
+        state.descriptor.bot.selectedOptions.length < 4) {
+      title += ' on ' + state.descriptor.bot.selectedOptions.join(', ');
     }
-    if (state.testCase.selectedOptions.length > 0 &&
-        state.testCase.selectedOptions.length < 4) {
-      title += ' for ' + state.testCase.selectedOptions.join(', ');
+    if (state.descriptor.case.selectedOptions.length > 0 &&
+        state.descriptor.case.selectedOptions.length < 4) {
+      title += ' for ' + state.descriptor.case.selectedOptions.join(', ');
     }
     return title;
   };
 
   ChartSection.isEmpty = state => (
     !state ||
-    !state.testSuite ||
-    !state.measurement ||
-    !state.bot ||
-    !state.testCase || (
-      state.testSuite.selectedOptions.length === 0 &&
-      state.measurement.selectedOptions.length === 0 &&
-      state.bot.selectedOptions.length === 0 &&
-      state.testCase.selectedOptions.length === 0));
+    !state.descriptor ||
+    !state.descriptor.suite ||
+    !state.descriptor.measurement ||
+    !state.descriptor.bot ||
+    !state.descriptor.case || (
+      state.descriptor.suite.selectedOptions.length === 0 &&
+      state.descriptor.measurement.selectedOptions.length === 0 &&
+      state.descriptor.bot.selectedOptions.length === 0 &&
+      state.descriptor.case.selectedOptions.length === 0));
 
   ChartSection.matchesOptions = (state, options) => {
     if (!options ||
         !state ||
-        !state.testSuite ||
-        !state.measurement ||
-        !state.bot ||
-        !state.testCase) {
+        !state.descriptor ||
+        !state.descriptor.suite ||
+        !state.descriptor.measurement ||
+        !state.descriptor.bot ||
+        !state.descriptor.case) {
       return false;
     }
     if (options.mode !== undefined &&
@@ -1323,43 +1156,44 @@ tr.exportTo('cp', () => {
       return false;
     }
     if (options.parameters) {
-      if (options.parameters.testSuites && !tr.b.setsEqual(
-          new Set(options.parameters.testSuites),
-          new Set(state.testSuite.selectedOptions))) {
+      if (options.parameters.suites && !tr.b.setsEqual(
+          new Set(options.parameters.suites),
+          new Set(state.descriptor.suite.selectedOptions))) {
         return false;
       }
       if (options.parameters.measurements && !tr.b.setsEqual(
           new Set(options.parameters.measurements),
-          new Set(state.measurement.selectedOptions))) {
+          new Set(state.descriptor.measurement.selectedOptions))) {
         return false;
       }
       if (options.parameters.bots && !tr.b.setsEqual(
           new Set(options.parameters.bots),
-          new Set(state.bot.selectedOptions))) {
+          new Set(state.descriptor.bot.selectedOptions))) {
         return false;
       }
-      if (options.parameters.testCases && !tr.b.setsEqual(
-          new Set(options.parameters.testCases),
-          new Set(state.testCase.selectedOptions))) {
+      if (options.parameters.cases && !tr.b.setsEqual(
+          new Set(options.parameters.cases),
+          new Set(state.descriptor.case.selectedOptions))) {
+        return false;
+      }
+      if (options.parameters.suitesAggregated !== undefined &&
+          options.parameters.suitesAggregated !=
+          state.descriptor.suite.isAggregated) {
+        return false;
+      }
+      if (options.parameters.botsAggregated !== undefined &&
+          options.parameters.botsAggregated !=
+          state.descriptor.bot.isAggregated) {
+        return false;
+      }
+      if (options.parameters.casesAggregated !== undefined &&
+          options.parameters.casesAggregated !=
+          state.descriptor.case.isAggregated) {
         return false;
       }
       if (options.parameters.statistics && !tr.b.setsEqual(
           new Set(options.parameters.statistics),
           new Set(state.statistic.selectedOptions))) {
-        return false;
-      }
-      if (options.parameters.testSuitesAggregated !== undefined &&
-          options.parameters.testSuitesAggregated !=
-          state.testSuite.isAggregated) {
-        return false;
-      }
-      if (options.parameters.botsAggregated !== undefined &&
-          options.parameters.botsAggregated != state.bot.isAggregated) {
-        return false;
-      }
-      if (options.parameters.testCasesAggregated !== undefined &&
-          options.parameters.testCasesAggregated !=
-          state.testCase.isAggregated) {
         return false;
       }
     }
@@ -1380,7 +1214,5 @@ tr.exportTo('cp', () => {
 
   cp.ElementBase.register(ChartSection);
 
-  return {
-    ChartSection,
-  };
+  return {ChartSection};
 });

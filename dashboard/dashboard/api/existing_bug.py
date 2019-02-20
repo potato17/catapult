@@ -4,6 +4,7 @@
 
 from google.appengine.ext import ndb
 
+from dashboard import associate_alerts
 from dashboard.api import api_request_handler
 from dashboard.common import utils
 
@@ -16,8 +17,6 @@ class ExistingBugHandler(api_request_handler.ApiRequestHandler):
   def Post(self):
     keys = self.request.get_all('key')
     bug_id = int(self.request.get('bug'))
-    alert_entities = ndb.get_multi([ndb.Key(urlsafe=k) for k in keys])
-    for a in alert_entities:
-      a.bug_id = bug_id
-    ndb.put_multi(alert_entities)
+    alerts = ndb.get_multi([ndb.Key(urlsafe=k) for k in keys])
+    associate_alerts.AssociateAlerts(bug_id, alerts)
     return {}

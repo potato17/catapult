@@ -106,36 +106,14 @@ def _GetSheriffList():
   return [key.string_id() for key in sheriff_keys]
 
 
-def AnomalyDicts(anomalies):
+def AnomalyDicts(anomalies, v2=False):
   """Makes a list of dicts with properties of Anomaly entities."""
   bisect_statuses = _GetBisectStatusDict(anomalies)
-  return [GetAnomalyDict(a, bisect_statuses.get(a.bug_id)) for a in anomalies]
-
-def AnomalyDicts2(anomalies):
-  ads = AnomalyDicts(anomalies)
-  for ad in ads:
-    desc = descriptor.Descriptor.FromTestPathSync(
-        '/'.join([ad['master'], ad['bot'], ad['testsuite'], ad['test']]))
-    ad['descriptor'] = {
-        'testSuite': desc.test_suite,
-        'measurement': desc.measurement,
-        'bot': desc.bot,
-        'testCase': desc.test_case,
-        'statistic': desc.statistic,
-    }
-    del ad['master']
-    del ad['bot']
-    del ad['testsuite']
-    del ad['type']
-    del ad['display_end']
-    del ad['display_start']
-    del ad['date']
-    del ad['percent_changed']
-    del ad['ref_test']
-  return ads
+  return [GetAnomalyDict(a, bisect_statuses.get(a.bug_id), v2)
+          for a in anomalies]
 
 
-def GetAnomalyDict(anomaly_entity, bisect_status=None):
+def GetAnomalyDict(anomaly_entity, bisect_status=None, v2=False):
   """Returns a dictionary for an Anomaly which can be encoded as JSON.
 
   Args:
@@ -147,50 +125,64 @@ def GetAnomalyDict(anomaly_entity, bisect_status=None):
   """
   test_key = anomaly_entity.GetTestMetadataKey()
   test_path = utils.TestPath(test_key)
-  test_path_parts = test_path.split('/')
   dashboard_link = email_template.GetReportPageLink(
       test_path, rev=anomaly_entity.end_revision, add_protocol_and_host=False)
 
-  bug_labels = set()
-  bug_components = set()
-  if anomaly_entity.internal_only:
-    bug_labels.add('Restrict-View-Google')
-  tags = bug_label_patterns.GetBugLabelsForTest(test_key)
-  if anomaly_entity.sheriff:
-    tags += anomaly_entity.sheriff.get().labels
-  for tag in tags:
-    if tag.startswith('Cr-'):
-      bug_components.add(tag.replace('Cr-', '').replace('-', '>'))
-    else:
-      bug_labels.add(tag)
-
-  return {
-      'absolute_delta': '%s' % anomaly_entity.GetDisplayAbsoluteChanged(),
-      'bisect_status': bisect_status,
-      'bot': test_path_parts[1],
-      'bug_components': list(bug_components),
-      'bug_labels': list(bug_labels),
+  dct = {
       'bug_id': anomaly_entity.bug_id,
       'dashboard_link': dashboard_link,
-      'date': str(anomaly_entity.timestamp.date()),
-      'display_end': anomaly_entity.display_end,
-      'display_start': anomaly_entity.display_start,
       'end_revision': anomaly_entity.end_revision,
       'improvement': anomaly_entity.is_improvement,
       'key': anomaly_entity.key.urlsafe(),
-      'master': test_path_parts[0],
       'median_after_anomaly': anomaly_entity.median_after_anomaly,
       'median_before_anomaly': anomaly_entity.median_before_anomaly,
-      'percent_changed': '%s' % anomaly_entity.GetDisplayPercentChanged(),
       'recovered': anomaly_entity.recovered,
-      'ref_test': anomaly_entity.GetRefTestPath(),
       'start_revision': anomaly_entity.start_revision,
-      'test': '/'.join(test_path_parts[3:]),
-      'testsuite': test_path_parts[2],
-      'timestamp': anomaly_entity.timestamp.isoformat(),
-      'type': 'anomaly',
       'units': anomaly_entity.units,
   }
+
+  if v2:
+    bug_labels = set()
+    bug_components = set()
+    if anomaly_entity.internal_only:
+      bug_labels.add('Restrict-View-Google')
+    tags = bug_label_patterns.GetBugLabelsForTest(test_key)
+    if anomaly_entity.sheriff:
+      tags += anomaly_entity.sheriff.get().labels
+    for tag in tags:
+      if tag.startswith('Cr-'):
+        bug_components.add(tag.replace('Cr-', '').replace('-', '>'))
+      else:
+        bug_labels.add(tag)
+
+    dct['bug_components'] = list(bug_components)
+    dct['bug_labels'] = list(bug_labels)
+
+    desc = descriptor.Descriptor.FromTestPathSync(test_path)
+    dct['descriptor'] = {
+        'testSuite': desc.test_suite,
+        'measurement': desc.measurement,
+        'bot': desc.bot,
+        'testCase': desc.test_case,
+        'statistic': desc.statistic,
+    }
+  else:
+    test_path_parts = test_path.split('/')
+    dct['absolute_delta'] = '%s' % anomaly_entity.GetDisplayAbsoluteChanged()
+    dct['bisect_status'] = bisect_status
+    dct['bot'] = test_path_parts[1]
+    dct['date'] = str(anomaly_entity.timestamp.date())
+    dct['display_end'] = anomaly_entity.display_end
+    dct['display_start'] = anomaly_entity.display_start
+    dct['master'] = test_path_parts[0]
+    dct['percent_changed'] = '%s' % anomaly_entity.GetDisplayPercentChanged()
+    dct['ref_test'] = anomaly_entity.GetRefTestPath()
+    dct['test'] = '/'.join(test_path_parts[3:])
+    dct['testsuite'] = test_path_parts[2]
+    dct['timestamp'] = anomaly_entity.timestamp.isoformat()
+    dct['type'] = 'anomaly'
+
+  return dct
 
 
 def _GetBisectStatusDict(anomalies):

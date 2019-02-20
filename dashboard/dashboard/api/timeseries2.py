@@ -21,7 +21,8 @@ DIAGNOSTICS_QUERY_LIMIT = 10000
 HISTOGRAMS_QUERY_LIMIT = 1000
 ROWS_QUERY_LIMIT = 20000
 
-COLUMNS_REQUIRING_ROWS = {'timestamp', 'revisions'}.union(descriptor.STATISTICS)
+COLUMNS_REQUIRING_ROWS = {'timestamp', 'revisions', 'annotations'}.union(
+    descriptor.STATISTICS)
 
 
 class Timeseries2Handler(api_request_handler.ApiRequestHandler):
@@ -147,7 +148,8 @@ class TimeseriesQuery(object):
       desc.statistic = statistic
       test_paths.extend(desc.ToTestPathsSync())
 
-    self._test_metadata_keys = [utils.TestMetadataKey(path) for path in test_paths]
+    self._test_metadata_keys = [
+        utils.TestMetadataKey(path) for path in test_paths]
     self._test_metadata_keys.extend(self._unsuffixed_test_metadata_keys)
     test_paths.extend(unsuffixed_test_paths)
 
@@ -198,9 +200,9 @@ class TimeseriesQuery(object):
     limit = ROWS_QUERY_LIMIT
     projection = None
 
-    # 'r_'-prefixed revisions are not in any index, so a projection query can't
-    # get them.
-    if 'revisions' in self._columns:
+    # revisions and annotations are not in any index, so a projection query
+    # can't get them.
+    if 'revisions' in self._columns or 'annotations' in self._columns:
       return projection, limit
 
     # TODO(benjhayden) Remove this if/when the Row index is fixed.
@@ -266,6 +268,10 @@ class TimeseriesQuery(object):
           datum['revisions'] = {
               attr: value for attr, value in row.to_dict().iteritems()
               if attr.startswith('r_')}
+        if 'annotations' in self._columns:
+          datum['annotations'] = {
+              attr: value for attr, value in row.to_dict().iteritems()
+              if attr.startswith('a_')}
 
     if 'histogram' in self._columns and test_desc.statistic == None:
       with timing.WallTimeLogger('fetch_histograms'):
@@ -299,11 +305,12 @@ class TimeseriesQuery(object):
         self._private = True
       datum = self._Datum(alert.end_revision)
       # TODO(benjhayden) bisect_status
-      datum['alert'] = alerts.AnomalyDicts2([alert])[0]
+      datum['alert'] = alerts.AnomalyDicts([alert], v2=True)[0]
 
   @ndb.tasklet
   def _FetchHistograms(self):
-    yield [self._FetchHistogramsForTest(test) for test in self._test_metadata_keys]
+    yield [self._FetchHistogramsForTest(test)
+           for test in self._test_metadata_keys]
 
   @ndb.tasklet
   def _FetchHistogramsForTest(self, test):

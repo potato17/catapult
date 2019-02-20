@@ -28,276 +28,8 @@ tr.exportTo('cp', () => {
       this.scrollIntoView(true);
     }
 
-    connectedCallback() {
-      super.connectedCallback();
-      this.dispatch('connected', this.statePath);
-    }
-
-    async onCloseSection_() {
-      await this.dispatchEvent(new CustomEvent('close-section', {
-        bubbles: true,
-        composed: true,
-        detail: {sectionId: this.sectionId},
-      }));
-    }
-
-    async onTagSelect_(event) {
-      const {tableIndex, rowIndex} = event.model;
-      this.dispatch(cp.ChartParameter.actions.tagFilter(
-          `${this.statePath}.tables.${tableIndex}.rows.${rowIndex}.testCase`));
-    }
-
-    async onSelectSource_(event) {
-      if (this.source.selectedOptions.includes(ReportSection.CREATE)) {
-        this.$.source.blur();
-        for (let i = 0; i < 10; ++i) {
-          const name = this.shadowRoot.querySelector('.report_name_input');
-          if (name) {
-            name.focus();
-            break;
-          }
-          await cp.timeout(100);
-        }
-      }
-    }
-
-    prevMstoneButtonLabel_(milestone, maxRevision) {
-      return this.prevMstoneLabel_(milestone - 1, maxRevision);
-    }
-
-    prevMstoneLabel_(milestone, maxRevision) {
-      if (maxRevision === 'latest') milestone += 1;
-      return `M${milestone - 1}`;
-    }
-
-    curMstoneLabel_(milestone, maxRevision) {
-      if (maxRevision === 'latest') return '';
-      return `M${milestone}`;
-    }
-
-    async onPreviousMilestone_() {
-      await this.dispatch('selectMilestone', this.statePath,
-          this.milestone - 1);
-    }
-
-    async onNextMilestone_() {
-      await this.dispatch('selectMilestone', this.statePath,
-          this.milestone + 1);
-    }
-
-    async onCopy_(event) {
-      // TODO maybe use the template to render this table?
-      const table = document.createElement('table');
-      const statisticsCount = event.model.table.statistics.length;
-      for (const row of event.model.table.rows) {
-        const tr = document.createElement('tr');
-        table.appendChild(tr);
-        // b/111692559
-        const td = document.createElement('td');
-        td.innerText = row.label;
-        tr.appendChild(td);
-
-        for (let scalarIndex = 0; scalarIndex < 2 * statisticsCount;
-          ++scalarIndex) {
-          const td = document.createElement('td');
-          tr.appendChild(td);
-          const scalar = row.scalars[scalarIndex];
-          if (isNaN(scalar.value) || !isFinite(scalar.value)) continue;
-          const scalarStr = scalar.unit.format(scalar.value, {
-            unitPrefix: scalar.unitPrefix,
-          });
-          const numberMatch = scalarStr.match(/^(-?[,0-9]+\.?[0-9]*)/);
-          if (!numberMatch) continue;
-          td.innerText = numberMatch[0];
-        }
-      }
-
-      this.$.scratch.appendChild(table);
-      const range = document.createRange();
-      range.selectNodeContents(this.$.scratch);
-      const selection = window.getSelection();
-      selection.removeAllRanges();
-      selection.addRange(range);
-      document.execCommand('copy');
-      await this.$.copied.open();
-      this.$.scratch.innerText = '';
-    }
-
-    async onOpenChart_(event) {
-      // The user may have clicked a link for an individual row (in which case
-      // labelPartIndex = labelParts.length - 1) or a group of rows (in which
-      // case labelPartIndex < labelParts.length - 1). In the latter case,
-      // collect all parameters for all rows in the group (all measurements, all
-      // bots, all test cases, all test suites).
-      function getLabelPrefix(row) {
-        return row.labelParts.slice(0, event.model.labelPartIndex + 1).map(
-            p => p.label).join(':');
-      }
-      const labelPrefix = getLabelPrefix(event.model.parentModel.row);
-      const table = event.model.parentModel.parentModel.table;
-      const testSuites = new Set();
-      const measurements = new Set();
-      const bots = new Set();
-      const testCases = new Set();
-      for (const row of table.rows) {
-        if (getLabelPrefix(row) !== labelPrefix) continue;
-        for (const testSuite of row.testSuite.selectedOptions) {
-          testSuites.add(testSuite);
-        }
-        for (const measurement of row.measurement.selectedOptions) {
-          measurements.add(measurement);
-        }
-        for (const bot of row.bot.selectedOptions) {
-          bots.add(bot);
-        }
-        for (const testCase of row.testCase.selectedOptions) {
-          testCases.add(testCase);
-        }
-      }
-      let maxRevision = this.maxRevision;
-      if (maxRevision === 'latest') {
-        maxRevision = undefined;
-      }
-
-      this.dispatchEvent(new CustomEvent('new-chart', {
-        bubbles: true,
-        composed: true,
-        detail: {
-          options: {
-            minRevision: this.minRevision,
-            maxRevision,
-            parameters: {
-              testSuites: [...testSuites],
-              measurements: [...measurements],
-              bots: [...bots],
-              testCases: [...testCases],
-            },
-          },
-        },
-      }));
-    }
-
-    async onAlerts_(event) {
-      this.dispatchEvent(new CustomEvent('alerts', {
-        bubbles: true,
-        composed: true,
-        detail: {
-          options: {
-            reports: this.source.selectedOptions,
-            showingTriaged: true,
-            minRevision: '' + this.minRevisionInput,
-            maxRevision: '' + this.maxRevisionInput,
-          },
-        },
-      }));
-    }
-
-    async onToggleEditing_(event) {
-      await this.dispatch('toggleEditing', this.statePath,
-          event.model.tableIndex);
-      if (this.tables[event.model.tableIndex].isEditing) {
-        this.shadowRoot.querySelector('.report_name_input').focus();
-      }
-    }
-
-    isValid_(table) {
-      return ReportSection.isValid(table);
-    }
-
-    isLastRow_(rows) {
-      return rows.length === 1;
-    }
-
-    async onTemplateNameKeyUp_(event) {
-      await this.dispatch('templateName', this.statePath,
-          event.model.tableIndex, event.target.value);
-    }
-
-    async onTemplateOwnersKeyUp_(event) {
-      await this.dispatch('templateOwners', this.statePath,
-          event.model.tableIndex, event.target.value);
-    }
-
-    async onTemplateUrlKeyUp_(event) {
-      await this.dispatch('templateUrl', this.statePath, event.model.tableIndex,
-          event.target.value);
-    }
-
-    async onTemplateRowLabelKeyUp_(event) {
-      await this.dispatch('templateRowLabel', this.statePath,
-          event.model.tableIndex, event.model.rowIndex, event.target.value);
-    }
-
-    async onTestSuiteSelect_(event) {
-      await this.dispatch('templateTestSuite', this.statePath,
-          event.model.tableIndex, event.model.rowIndex);
-    }
-
-    async onTemplateRemoveRow_(event) {
-      await this.dispatch('templateRemoveRow', this.statePath,
-          event.model.tableIndex, event.model.rowIndex);
-    }
-
-    async onTemplateAddRow_(event) {
-      await this.dispatch('templateAddRow', this.statePath,
-          event.model.tableIndex, event.model.rowIndex);
-    }
-
-    async onTemplateSave_(event) {
-      await this.dispatch('templateSave', this.statePath,
-          event.model.tableIndex);
-    }
-
-    observeUserEmail_(userEmail) {
-      this.dispatch('authChange', this.statePath);
-    }
-
-    numChangeColumns_(statistics) {
-      return 2 * this.lengthOf_(statistics);
-    }
-
     canEdit_(table, userEmail) {
       return ReportSection.canEdit(table, userEmail);
-    }
-
-    async onMinRevisionKeyup_(event) {
-      await this.dispatch('setMinRevision', this.statePath, event.target.value);
-    }
-
-    async onMaxRevisionKeyup_(event) {
-      await this.dispatch('setMaxRevision', this.statePath, event.target.value);
-    }
-
-    isPreviousMilestone_(milestone) {
-      return milestone > (MIN_MILESTONE + 1);
-    }
-
-    isNextMilestone_(milestone) {
-      return milestone < CURRENT_MILESTONE;
-    }
-
-    async onOverRow_(event) {
-      if (!event.model.row.actualDescriptors) return;
-      let tr;
-      for (const elem of event.path) {
-        if (elem.tagName === 'TR') {
-          tr = elem;
-          break;
-        }
-      }
-      if (!tr) return;
-      const td = tr.querySelectorAll('td')[event.model.row.labelParts.length];
-      const tdRect = await cp.measureElement(td);
-      await this.dispatch('showTooltip', this.statePath, {
-        rows: event.model.row.actualDescriptors.map(descriptor => [
-          descriptor.testSuite, descriptor.bot, descriptor.testCase]),
-        top: tdRect.bottom,
-        left: tdRect.left,
-      });
-    }
-
-    async onOutRow_(event) {
-      await this.dispatch('hideTooltip', this.statePath);
     }
 
     observeSources_() {
@@ -331,7 +63,6 @@ tr.exportTo('cp', () => {
       ],
     }),
     tables: options => [PLACEHOLDER_TABLE],
-    tooltip: options => {return {};},
   };
 
   ReportSection.buildState = options => cp.buildState(
@@ -343,7 +74,6 @@ tr.exportTo('cp', () => {
   };
   ReportSection.observers = [
     'observeSources_(source.selectedOptions, minRevision, maxRevision)',
-    'observeUserEmail_(userEmail)',
   ];
 
   const DASHES = '-'.repeat(5);
@@ -351,7 +81,10 @@ tr.exportTo('cp', () => {
     name: DASHES,
     isPlaceholder: true,
     statistics: ['avg'],
-    report: {rows: []},
+    report: {
+      rows: [],
+      tooltip: {},
+    },
   };
   // Keep this the same shape as the default report so that the buttons don't
   // move when the default report loads.
@@ -384,26 +117,6 @@ tr.exportTo('cp', () => {
   ReportSection.CREATE = '[Create new report]';
 
   ReportSection.actions = {
-    connected: statePath => async(dispatch, getState) => {
-      let state = Polymer.Path.get(getState(), statePath);
-      if (state.minRevision === undefined ||
-          state.maxRevision === undefined) {
-        ReportSection.actions.selectMilestone(
-            statePath, state.milestone)(dispatch, getState);
-      }
-      await ReportSection.actions.loadSources(statePath)(dispatch, getState);
-
-      state = Polymer.Path.get(getState(), statePath);
-      if (state.source.selectedOptions.length === 0) {
-        cp.MenuInput.actions.focus(
-            statePath + '.source')(dispatch, getState);
-      }
-    },
-
-    authChange: statePath => async(dispatch, getState) => {
-      ReportSection.actions.loadSources(statePath)(dispatch, getState);
-    },
-
     selectMilestone: (statePath, milestone) => async(dispatch, getState) => {
       dispatch({
         type: ReportSection.reducers.selectMilestone.name,
@@ -426,18 +139,6 @@ tr.exportTo('cp', () => {
       }
     },
 
-    toggleEditing: (statePath, tableIndex) => async(dispatch, getState) => {
-      const rootState = getState();
-      const state = Polymer.Path.get(rootState, statePath);
-      const table = state.tables[tableIndex];
-      if (table.canEdit !== true) {
-        // TODO isLoading
-        await ReportSection.actions.renderEditForm(
-            statePath, tableIndex)(dispatch, getState);
-      }
-      dispatch(Redux.TOGGLE(`${statePath}.tables.${tableIndex}.isEditing`));
-    },
-
     loadSources: statePath => async(dispatch, getState) => {
       const reportTemplateInfos = await new cp.ReportNamesRequest().response;
       const rootState = getState();
@@ -454,15 +155,15 @@ tr.exportTo('cp', () => {
     loadReports: statePath => async(dispatch, getState) => {
       let rootState = getState();
       let state = Polymer.Path.get(rootState, statePath);
-      let testSuites = [];
+      let suites = [];
       if (state.source.selectedOptions.includes(ReportSection.CREATE)) {
-        testSuites = await cp.TeamFilter.get(rootState.teamName).testSuites(
-            await cp.ReadTestSuites());
+        suites = await cp.TeamFilter.get(rootState.teamName).suites(
+            await new cp.TestSuitesRequest({}).response);
       }
       dispatch({
         type: ReportSection.reducers.requestReports.name,
         statePath,
-        testSuites,
+        suites,
       });
 
       const names = state.source.selectedOptions.filter(name =>
@@ -490,15 +191,15 @@ tr.exportTo('cp', () => {
             (state.maxRevision !== revisions[1])) {
           return;
         }
-        if (testSuites.length === 0) {
-          testSuites = await cp.TeamFilter.get(rootState.teamName).testSuites(
-              await cp.ReadTestSuites());
+        if (suites.length === 0) {
+          suites = await cp.TeamFilter.get(rootState.teamName).suites(
+              await new cp.TestSuitesRequest({}).response);
         }
         dispatch({
           type: ReportSection.reducers.receiveReports.name,
           statePath,
           reports: results,
-          testSuites,
+          suites,
         });
         // ReportSection.actions.renderEditForms(statePath)(dispatch, getState);
         // ReportSection.actions.prefetchCharts(statePath)(dispatch, getState);
@@ -514,8 +215,8 @@ tr.exportTo('cp', () => {
       if (table.canEdit !== false) await table.canEdit;
       const promise = (async() => {
         await Promise.all(table.rows.map(async(row, rowIndex) => {
-          if (!row.testSuite || !row.testSuite.selectedOptions ||
-              !row.testSuite.selectedOptions.length) {
+          if (!row.suite || !row.suite.selectedOptions ||
+              !row.suite.selectedOptions.length) {
             // TODO this nullcheck should not be necessary
             return;
           }
@@ -546,11 +247,11 @@ tr.exportTo('cp', () => {
       const lineDescriptors = [];
       for (const table of state.tables) {
         for (const row of table.rows) {
-          if (!row.testSuite || !row.measurement || !row.bot || !row.testCase) {
+          if (!row.suite || !row.measurement || !row.bot || !row.testCase) {
             continue;
           }
           lineDescriptors.push({
-            testSuites: row.testSuite.selectedOptions,
+            suites: row.suite.selectedOptions,
             measurement: row.measurement.selectedOptions[0],
             bots: row.bot.selectedOptions,
             testCases: row.testCase.selectedOptions,
@@ -566,100 +267,6 @@ tr.exportTo('cp', () => {
       }
     },
 
-    templateName: (statePath, tableIndex, name) =>
-      async(dispatch, getState) => {
-        const path = `${statePath}.tables.${tableIndex}`;
-        dispatch(Redux.UPDATE(path, {name}));
-      },
-
-    templateOwners: (statePath, tableIndex, owners) =>
-      async(dispatch, getState) => {
-        const path = `${statePath}.tables.${tableIndex}`;
-        dispatch(Redux.UPDATE(path, {owners}));
-      },
-
-    templateUrl: (statePath, tableIndex, url) =>
-      async(dispatch, getState) => {
-        dispatch(Redux.UPDATE(`${statePath}.tables.${tableIndex}`, {url}));
-      },
-
-    templateRowLabel: (statePath, tableIndex, rowIndex, label) =>
-      async(dispatch, getState) => {
-        const path = `${statePath}.tables.${tableIndex}.rows.${rowIndex}`;
-        dispatch(Redux.UPDATE(path, {label}));
-      },
-
-    templateTestSuite: (statePath, tableIndex, rowIndex) =>
-      async(dispatch, getState) => {
-        const path = `${statePath}.tables.${tableIndex}.rows.${rowIndex}`;
-        cp.ChartSection.actions.describeTestSuites(path)(dispatch, getState);
-      },
-
-    templateRemoveRow: (statePath, tableIndex, rowIndex) =>
-      async(dispatch, getState) => {
-        dispatch({
-          type: ReportSection.reducers.templateRemoveRow.name,
-          statePath,
-          tableIndex,
-          rowIndex,
-        });
-      },
-
-    templateAddRow: (statePath, tableIndex, rowIndex) =>
-      async(dispatch, getState) => {
-        dispatch({
-          type: ReportSection.reducers.templateAddRow.name,
-          statePath: `${statePath}.tables.${tableIndex}`,
-          rowIndex,
-          testSuites: await cp.ReadTestSuites(),
-        });
-        const path = `${statePath}.tables.${tableIndex}.rows.${rowIndex + 1}`;
-        cp.ChartSection.actions.describeTestSuites(path)(dispatch, getState);
-      },
-
-    templateSave: (statePath, tableIndex) => async(dispatch, getState) => {
-      let rootState = getState();
-      let state = Polymer.Path.get(rootState, statePath);
-      const table = state.tables[tableIndex];
-      const request = new cp.ReportTemplateRequest({
-        id: table.id,
-        name: table.name,
-        owners: table.owners.split(',').map(o => o.replace(/ /g, '')),
-        url: table.url,
-        statistics: table.statistic.selectedOptions,
-        rows: table.rows.map(row => {
-          return {
-            label: row.label,
-            testSuites: row.testSuite.selectedOptions,
-            measurement: row.measurement.selectedOptions[0],
-            bots: row.bot.selectedOptions,
-            testCases: row.testCase.selectedOptions,
-          };
-        }),
-      });
-      dispatch(Redux.UPDATE(statePath, {isLoading: true}));
-      const reportTemplateInfos = await request.response;
-      dispatch(Redux.UPDATE('', {reportTemplateInfos}));
-      const teamFilter = cp.TeamFilter.get(rootState.teamName);
-      const reportNames = await teamFilter.reportNames(
-          reportTemplateInfos.map(t => t.name));
-      dispatch({
-        type: ReportSection.reducers.receiveSourceOptions.name,
-        statePath,
-        reportNames,
-      });
-      rootState = getState();
-      state = Polymer.Path.get(rootState, statePath);
-      dispatch(Redux.UPDATE(statePath, {
-        isLoading: false,
-        source: {
-          ...state.source,
-          selectedOptions: [table.name],
-        },
-      }));
-      ReportSection.actions.loadReports(statePath)(dispatch, getState);
-    },
-
     setMinRevision: (statePath, minRevisionInput) =>
       async(dispatch, getState) => {
         dispatch(Redux.UPDATE(statePath, {minRevisionInput}));
@@ -673,14 +280,6 @@ tr.exportTo('cp', () => {
         if (!maxRevisionInput.match(/^\d{6}$/)) return;
         dispatch(Redux.UPDATE(statePath, {maxRevision: maxRevisionInput}));
       },
-
-    showTooltip: (statePath, tooltip) => async(dispatch, getState) => {
-      dispatch(Redux.UPDATE(statePath, {tooltip}));
-    },
-
-    hideTooltip: statePath => async(dispatch, getState) => {
-      dispatch(Redux.UPDATE(statePath, {tooltip: {}}));
-    },
   };
 
   ReportSection.reducers = {
@@ -740,7 +339,7 @@ tr.exportTo('cp', () => {
         if (!tableNames.has(name)) {
           if (name === ReportSection.CREATE) {
             tables.push(ReportSection.newTemplate(
-                rootState.userEmail, action.testSuites));
+                rootState.userEmail, action.suites));
           } else {
             tables.push(ReportSection.placeholderTable(name));
           }
@@ -761,7 +360,7 @@ tr.exportTo('cp', () => {
         const rows = report.report.rows.map(
             row => ReportSection.transformReportRow(
                 row, state.minRevision, state.maxRevision,
-                report.report.statistics, action.testSuites));
+                report.report.statistics, action.suites));
 
         // Right-align labelParts.
         const maxLabelParts = tr.b.math.Statistics.max(rows, row =>
@@ -801,6 +400,7 @@ tr.exportTo('cp', () => {
           canEdit: false, // See actions.renderEditForm
           isEditing: false,
           rows,
+          tooltip: {},
           maxLabelParts,
           owners: (report.owners || []).join(', '),
           statistic: {
@@ -844,10 +444,10 @@ tr.exportTo('cp', () => {
     templateAddRow: (table, action, rootState) => {
       const contextRow = table.rows[action.rowIndex];
       const newRow = ReportSection.newTemplateRow({
-        testSuite: {
-          options: cp.OptionGroup.groupValues(action.testSuites),
-          label: `Test suites (${action.testSuites.length})`,
-          selectedOptions: [...contextRow.testSuite.selectedOptions],
+        suite: {
+          options: cp.OptionGroup.groupValues(action.suites),
+          label: `Test suites (${action.suites.length})`,
+          selectedOptions: [...contextRow.suite.selectedOptions],
         },
         bot: {
           selectedOptions: [...contextRow.bot.selectedOptions],
@@ -862,7 +462,7 @@ tr.exportTo('cp', () => {
     },
   };
 
-  ReportSection.newTemplate = (userEmail, testSuites) => {
+  ReportSection.newTemplate = (userEmail, suites) => {
     return {
       isEditing: true,
       name: '',
@@ -870,9 +470,9 @@ tr.exportTo('cp', () => {
       url: '',
       statistics: [],
       rows: [ReportSection.newTemplateRow({
-        testSuite: {
-          options: cp.OptionGroup.groupValues(testSuites),
-          label: `Test suites (${testSuites.length})`,
+        suite: {
+          options: cp.OptionGroup.groupValues(suites),
+          label: `Test suites (${suites.length})`,
         },
       })],
       statistic: {
@@ -896,15 +496,15 @@ tr.exportTo('cp', () => {
     };
   };
 
-  ReportSection.newTemplateRow = ({testSuite, bot, testCase}) => {
+  ReportSection.newTemplateRow = ({suite, bot, testCase}) => {
     return {
       label: '',
-      testSuite: {
-        ...testSuite,
+      suite: {
+        ...suite,
         errorMessage: 'Required',
         query: '',
         required: true,
-        selectedOptions: testSuite.selectedOptions || [],
+        selectedOptions: suite.selectedOptions || [],
       },
       measurement: {
         errorMessage: 'Require exactly one',
@@ -992,20 +592,23 @@ tr.exportTo('cp', () => {
     const params = new URLSearchParams({
       measurement: lineDescriptor.measurement,
     });
-    for (const testSuite of lineDescriptor.testSuites) {
-      params.append('testSuite', testSuite);
+    for (const suite of lineDescriptor.suites) {
+      params.append('suite', suite);
     }
-    for (const bot of lineDescriptor.testSuites) {
+    for (const bot of lineDescriptor.bots) {
       params.append('bot', bot);
     }
-    for (const testCase of lineDescriptor.testSuites) {
-      params.append('testCase', testCase);
+    for (const cas of lineDescriptor.cases) {
+      params.append('testCase', cas);
     }
     return location.origin + '#' + params;
   }
 
   ReportSection.transformReportRow = (
-      row, minRevision, maxRevision, statistics, testSuites) => {
+      row, minRevision, maxRevision, statistics, suites) => {
+    if (!row.suites) row.suites = row.testSuites;
+    if (!row.cases) row.cases = row.testCases;
+
     const href = chartHref(row);
     const labelParts = row.label.split(':').map(label => {
       return {
@@ -1044,13 +647,16 @@ tr.exportTo('cp', () => {
 
     const scalars = [];
     for (const revision of [minRevision, maxRevision]) {
-      for (const statistic of statistics) {
+      for (let statistic of statistics) {
         // IndexedDB can return impartial results if there is no data cached for
         // the requested revision.
         if (!row.data[revision]) {
           scalars.push({}); // insert empty column
           continue;
         }
+
+        if (statistic === 'avg') statistic = 'mean';
+        if (statistic === 'std') statistic = 'stddev';
 
         const unit = (statistic === 'count') ? tr.b.Unit.byName.count :
           rowUnit;
@@ -1067,7 +673,10 @@ tr.exportTo('cp', () => {
         });
       }
     }
-    for (const statistic of statistics) {
+    for (let statistic of statistics) {
+      if (statistic === 'avg') statistic = 'mean';
+      if (statistic === 'std') statistic = 'stddev';
+
       // IndexedDB can return impartial results if there is no data cached for
       // the requested min or max revision.
       if (!row.data[minRevision] || !row.data[maxRevision]) {
@@ -1103,57 +712,24 @@ tr.exportTo('cp', () => {
       scalars,
       label: row.label,
       actualDescriptors,
-      testSuite: {
-        errorMessage: 'Required',
-        label: `Test suites (${testSuites.length})`,
-        options: testSuites,
-        query: '',
-        required: true,
-        selectedOptions: row.testSuites,
-      },
-      measurement: {
-        errorMessage: 'Require exactly one',
-        label: 'Measurement',
-        options: [],
-        query: '',
-        requireSingle: true,
-        required: true,
-        selectedOptions: [row.measurement],
-      },
-      bot: {
-        errorMessage: 'Required',
-        label: 'Bots',
-        options: [],
-        query: '',
-        required: true,
-        selectedOptions: row.bots,
-      },
-      testCase: {
-        label: 'Test cases',
-        options: [],
-        query: '',
-        selectedOptions: row.testCases,
-      },
+      ...cp.buildState(cp.TimeseriesDescriptor.State, {
+        suite: {
+          selectedOptions: row.suites,
+        },
+        measurement: {
+          selectedOptions: [row.measurement],
+        },
+        bot: {
+          selectedOptions: row.bots,
+        },
+        case: {
+          selectedOptions: row.cases,
+        },
+      }),
     };
-  };
-
-  ReportSection.isValid = table => {
-    if (!table) return false;
-    if (!table.name) return false;
-    if (!table.owners) return false;
-    if (table.statistic.selectedOptions.length === 0) return false;
-    for (const row of table.rows) {
-      if (!row.label) return false;
-      if (row.testSuite.selectedOptions.length === 0) return false;
-      if (row.measurement.selectedOptions.length !== 1) return false;
-      if (row.bot.selectedOptions.length === 0) return false;
-    }
-    return true;
   };
 
   cp.ElementBase.register(ReportSection);
 
-  return {
-    ReportSection,
-  };
+  return {ReportSection};
 });

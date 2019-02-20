@@ -5,17 +5,13 @@
 'use strict';
 tr.exportTo('cp', () => {
   class SheriffsRequest extends cp.RequestBase {
-    constructor(options) {
+    constructor(options = {}) {
       super(options);
       this.method_ = 'POST';
     }
 
     get url_() {
       return '/api/sheriffs';
-    }
-
-    async localhostResponse_() {
-      return ['Chromium Perf Sheriff'];
     }
   }
 

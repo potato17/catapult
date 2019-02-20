@@ -8,14 +8,15 @@ found in the LICENSE file.
 <link rel="import" href="/bower_components/iron-collapse/iron-collapse.html">
 <link rel="import" href="/dashboard/spa/chart-legend.html">
 <link rel="import" href="/dashboard/spa/chart-pair.html">
-<link rel="import" href="/dashboard/spa/chart-parameter.html">
 <link rel="import" href="/dashboard/spa/chart-timeseries.html">
 <link rel="import" href="/dashboard/spa/cp-loading.html">
 <link rel="import" href="/dashboard/spa/cp-tab-bar.html">
 <link rel="import" href="/dashboard/spa/describe-request.html">
 <link rel="import" href="/dashboard/spa/element-base.html">
 <link rel="import" href="/dashboard/spa/expand-button.html">
-<link rel="import" href="/dashboard/spa/test-suites.html">
+<link rel="import" href="/dashboard/spa/menu-input.html">
+<link rel="import" href="/dashboard/spa/test-suites-request.html">
+<link rel="import" href="/dashboard/spa/timeseries-descriptor.html">
 <link rel="import" href="/dashboard/static/memory_related_names.html">
 
 <dom-module id="chart-section">
@@ -34,10 +35,6 @@ found in the LICENSE file.
 
       #parameters {
         display: flex;
-      }
-
-      chart-parameter:not(:first-of-type) {
-        margin-left: 8px;
       }
 
       #spacer {
@@ -144,38 +141,15 @@ found in the LICENSE file.
       <div id="controls_inner">
         <iron-collapse id="parameters"
                        opened="[[isExpanded]]">
-          <chart-parameter
-              state-path="[[statePath]].testSuite"
-              on-option-select="onTestSuiteSelect_"
-              on-aggregate="onTestSuiteAggregate_">
-          </chart-parameter>
+          <timeseries-descriptor
+              state-path="[[statePath]].descriptor"
+              on-matrix-change="onMatrixChange_">
+          </timeseries-descriptor>
 
-          <a id="documentation" target="_blank" title="Documentation"
-             href="[[testSuiteHref_(testSuite.selectedOptions)]]">
-            <iron-icon icon="cp:help"></iron-icon>
-          </a>
-
-          <chart-parameter
-              state-path="[[statePath]].measurement"
-              on-option-select="onMeasurementSelect_">
-          </chart-parameter>
-
-          <chart-parameter
-              state-path="[[statePath]].bot"
-              on-option-select="onBotSelect_"
-              on-aggregate="onBotAggregate_">
-          </chart-parameter>
-
-          <chart-parameter
-              state-path="[[statePath]].testCase"
-              on-option-select="onTestCaseSelect_"
-              on-aggregate="onTestCaseAggregate_">
-          </chart-parameter>
-
-          <chart-parameter
+          <menu-input
               state-path="[[statePath]].statistic"
               on-option-select="onStatisticSelect_">
-          </chart-parameter>
+          </menu-input>
         </iron-collapse>
 
         <iron-collapse opened="[[!isExpanded]]">
@@ -225,12 +199,12 @@ found in the LICENSE file.
           id="legend_container"
           horizontal
           opened="[[isLegendOpen_(isExpanded, legend, histograms)]]"
-          on-click="onLegendTap_">
+          on-click="onLegendClick_">
         <chart-legend
             items="[[legend]]"
             on-leaf-mouseover="onLegendMouseOver_"
             on-leaf-mouseout="onLegendMouseOut_"
-            on-leaf-tap="onLegendLeafTap_">
+            on-leaf-click="onLegendLeafClick_">
         </chart-legend>
       </iron-collapse>
     </div>
@@ -246,7 +220,7 @@ found in the LICENSE file.
                      opened="[[isExpanded]]">
         <cp-tab-bar selected="[[selectedRelatedTabName]]">
           <template is="dom-repeat" items="[[relatedTabs]]" as="tab" index-as="tabIndex">
-            <cp-tab name="[[tab.name]]" on-click="onRelatedTabTap_">
+            <cp-tab name="[[tab.name]]" on-click="onRelatedTabClick_">
               [[tab.name]]
             </cp-tab>
           </template>
@@ -261,7 +235,7 @@ found in the LICENSE file.
                 <div
                     class="sparkline_tile"
                     empty$="[[isEmpty_(sparkline.layout.lines)]]"
-                    on-click="onSparklineTap_">
+                    on-click="onSparklineClick_">
                   <div class="sparkline_name">[[sparkline.name]]</div>
                   <chart-timeseries
                       state-path="[[statePath]].relatedTabs.[[tabIndex]].renderedSparklines.[[sparklineIndex]].layout">

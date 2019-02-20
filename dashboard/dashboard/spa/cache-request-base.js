@@ -77,7 +77,7 @@ export class CacheRequestBase {
         return;
       }
     }
-    TASK_QUEUE.scheduleFlush()
+    TASK_QUEUE.scheduleFlush();
   }
 
   onComplete() {
@@ -90,11 +90,13 @@ export class CacheRequestBase {
     return null;
   }
 
-  respond() {
-    this.fetchEvent.respondWith(this.responsePromise.then(response => {
+  async respond() {
+    const responsePromise = this.responsePromise.then(response => {
       this.onResponded();
       return jsonResponse(response);
-    }));
+    });
+    this.fetchEvent.respondWith(responsePromise);
+    return await responsePromise;
   }
 
   async writeDatabase(options) {

@@ -6,8 +6,10 @@ found in the LICENSE file.
 -->
 
 <link rel="import" href="/dashboard/spa/chart-base.html">
-<link rel="import" href="/dashboard/spa/chart-placeholder.html">
 <link rel="import" href="/dashboard/spa/element-base.html">
+<link rel="import" href="/dashboard/spa/layout-timeseries.html">
+<link rel="import" href="/dashboard/spa/place-holder.html">
+<link rel="import" href="/dashboard/spa/timeseries-merger.html">
 <link rel="import" href="/dashboard/spa/timeseries-request.html">
 <link rel="import" href="/dashboard/spa/utils.html">
 <link rel="import" href="/tracing/base/color_scheme.html">
@@ -19,22 +21,21 @@ found in the LICENSE file.
       :host {
         display: block;
       }
-      chart-placeholder {
+      place-holder {
         @apply --chart-placeholder;
       }
     </style>
 
     <template is="dom-if" if="[[showPlaceholder(isLoading, lines)]]">
-      <chart-placeholder>
+      <place-holder>
         <slot></slot>
-      </chart-placeholder>
+      </place-holder>
     </template>
 
     <template is="dom-if" if="[[!showPlaceholder(isLoading, lines)]]">
       <chart-base
           state-path="[[statePath]]"
-          on-dot-mouseover="onDotMouseOver_"
-          on-dot-mouseout="onDotMouseOut_">
+          on-get-tooltip="onGetTooltip_">
       </chart-base>
     </template>
   </template>

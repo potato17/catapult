@@ -6,7 +6,7 @@
 tr.exportTo('cp', () => {
   class RequestBase {
     constructor(options = {}) {
-      this.promise_ = undefined;
+      this.responsePromise_ = undefined;
 
       this.method_ = 'GET';
       this.headers_ = new Headers(options.headers);
@@ -22,10 +22,14 @@ tr.exportTo('cp', () => {
       }
     }
 
+    get url_() {
+      throw new Error('subclasses must override get url_()');
+    }
+
     get response() {
       // Don't call fetch_ before the subclass constructor finishes.
-      if (!this.promise_) this.promise_ = this.fetch_();
-      return this.promise_;
+      if (!this.responsePromise_) this.responsePromise_ = this.fetch_();
+      return this.responsePromise_;
     }
 
     // Some CacheRequest classes use ResultChannelSender to stream parts of the
@@ -46,6 +50,8 @@ tr.exportTo('cp', () => {
     }
 
     async addAuthorizationHeaders_() {
+      if (!window.IS_PRODUCTION && !window.mocha) return;
+      if (!window.getAuthorizationHeaders) return;
       const headers = await window.getAuthorizationHeaders();
       for (const [name, value] of Object.entries(headers)) {
         this.headers_.set(name, value);
@@ -53,13 +59,6 @@ tr.exportTo('cp', () => {
     }
 
     async fetch_() {
-      if (window.IS_DEBUG) {
-        // Simulate network latency in order to test loading state e.g. progress
-        // bars.
-        await cp.timeout(1000);
-        return this.postProcess_(await this.localhostResponse_());
-      }
-
       await this.addAuthorizationHeaders_();
 
       const mark = tr.b.Timing.mark('fetch', this.constructor.name);
@@ -78,20 +77,10 @@ tr.exportTo('cp', () => {
       this.abortController_.abort();
     }
 
-    get url_() {
-      throw new Error('subclasses must override get url_()');
-    }
-
-    async localhostResponse_() {
-      return {};
-    }
-
     postProcess_(json, isFromChannel = false) {
       return json;
     }
   }
 
-  return {
-    RequestBase,
-  };
+  return {RequestBase};
 });

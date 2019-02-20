@@ -10,12 +10,8 @@ tr.exportTo('cp', () => {
       this.scrollIntoView(true);
     }
 
-    getTableHeightPx_() {
-      return Math.max(122, window.innerHeight - 483);
-    }
-
     anySelectedAlerts_(alertGroups) {
-      return cp.AlertsSection.getSelectedAlerts(alertGroups).length > 0;
+      return AlertsTable.getSelectedAlerts(alertGroups).length > 0;
     }
 
     selectedCount_(alertGroup) {
@@ -41,12 +37,15 @@ tr.exportTo('cp', () => {
     }
 
     alertRevisionHref_(alert) {
+      // Most monitored timeseries on ChromiumPerf bots use revisions that are
+      // supported by test-results.appspot.com.
+      // TODO(benjhayden) Support revision range links more generally.
       if (alert.master === 'ChromiumPerf') return `http://test-results.appspot.com/revision_range?start=${alert.startRevision}&end=${alert.endRevision}&n=1000`;
       return '';
     }
 
     breakWords_(str) {
-      return cp.AlertsSection.breakWords(str);
+      return cp.breakWords(str);
     }
 
     isExpandedGroup_(groupIsExpanded, triagedIsExpanded) {
@@ -56,27 +55,15 @@ tr.exportTo('cp', () => {
     shouldDisplayAlert_(
         areAlertGroupsPlaceholders, showingTriaged, alertGroup, alertIndex,
         triagedExpanded) {
-      if (areAlertGroupsPlaceholders) return true;
-      if (showingTriaged) return alertGroup.isExpanded || (alertIndex === 0);
-
-      if (!alertGroup.alerts[alertIndex]) return false;
-      const isTriaged = alertGroup.alerts[alertIndex].bugId;
-      const firstUntriagedIndex = alertGroup.alerts.findIndex(a => !a.bugId);
-      if (alertGroup.isExpanded) {
-        return !isTriaged || triagedExpanded || (
-          alertIndex === firstUntriagedIndex);
-      }
-      if (isTriaged) return triagedExpanded;
-      return alertIndex === firstUntriagedIndex;
+      return AlertsTable.shouldDisplayAlert(
+          areAlertGroupsPlaceholders, showingTriaged, alertGroup, alertIndex,
+          triagedExpanded);
     }
 
     shouldDisplayExpandGroupButton_(
         alertGroup, alertIndex, showingTriaged, sortColumn, sortDescending) {
-      if (showingTriaged) {
-        return (alertIndex === 0) && alertGroup.alerts.length > 1;
-      }
-      return (alertIndex === alertGroup.alerts.findIndex(a => !a.bugId)) && (
-        alertGroup.alerts.length > (1 + alertGroup.triaged.count));
+      return AlertsTable.shouldDisplayExpandGroupButton(
+          alertGroup, alertIndex, showingTriaged);
     }
 
     getExpandGroupButtonLabel_(alertGroup, showingTriaged) {
@@ -86,8 +73,8 @@ tr.exportTo('cp', () => {
 
     shouldDisplayExpandTriagedButton_(
         showingTriaged, alertGroup, alertIndex, sortColumn, sortDescending) {
-      if (showingTriaged || (alertGroup.triaged.count === 0)) return false;
-      return alertIndex === alertGroup.alerts.findIndex(a => !a.bugId);
+      return AlertsTable.shouldDisplayExpandTriagedButton(
+          showingTriaged, alertGroup, alertIndex);
     }
 
     shouldDisplaySelectedCount_(
@@ -100,6 +87,10 @@ tr.exportTo('cp', () => {
       return bugId < 0;
     }
 
+    arePlaceholders_(alertGroups) {
+      return alertGroups === AlertsTable.PLACEHOLDER_ALERT_GROUPS;
+    }
+
     async onSelectAll_(event) {
       event.target.checked = !event.target.checked;
       await this.dispatch('selectAllAlerts', this.statePath);
@@ -110,15 +101,20 @@ tr.exportTo('cp', () => {
     }
 
     async onSelect_(event) {
+      let shiftKey = false;
+      if (event.detail && event.detail.event &&
+          (event.detail.event.shiftKey ||
+           (event.detail.event.detail && event.detail.event.detail.shiftKey))) {
+        shiftKey = true;
+      }
       await this.dispatch('selectAlert', this.statePath,
           event.model.parentModel.alertGroupIndex,
           event.model.alertIndex,
-          event.detail.event.shiftKey);
+          shiftKey);
       this.dispatchEvent(new CustomEvent('selected', {
         bubbles: true,
         composed: true,
       }));
-      document.getSelection().removeAllRanges();
     }
 
     async onSort_(event) {
@@ -129,9 +125,9 @@ tr.exportTo('cp', () => {
       }));
     }
 
-    async onRowTap_(event) {
+    async onRowClick_(event) {
       if (event.target.tagName !== 'TD') return;
-      this.dispatchEvent(new CustomEvent('select-alert', {
+      this.dispatchEvent(new CustomEvent('alert-click', {
         bubbles: true,
         composed: true,
         detail: {
@@ -142,8 +138,97 @@ tr.exportTo('cp', () => {
     }
   }
 
+  AlertsTable.getSelectedAlerts = alertGroups => {
+    const selectedAlerts = [];
+    for (const alertGroup of alertGroups) {
+      for (const alert of alertGroup.alerts) {
+        if (alert.isSelected) {
+          selectedAlerts.push(alert);
+        }
+      }
+    }
+    return selectedAlerts;
+  };
+
+  AlertsTable.shouldDisplayAlert = (
+      areAlertGroupsPlaceholders, showingTriaged, alertGroup, alertIndex,
+      triagedExpanded) => {
+    if (areAlertGroupsPlaceholders) return true;
+    if (showingTriaged) return alertGroup.isExpanded || (alertIndex === 0);
+
+    if (!alertGroup.alerts[alertIndex]) return false;
+    const isTriaged = alertGroup.alerts[alertIndex].bugId;
+    const firstUntriagedIndex = alertGroup.alerts.findIndex(a => !a.bugId);
+    if (alertGroup.isExpanded) {
+      return !isTriaged || triagedExpanded || (
+        alertIndex === firstUntriagedIndex);
+    }
+    if (isTriaged) return triagedExpanded;
+    return alertIndex === firstUntriagedIndex;
+  };
+
+  AlertsTable.shouldDisplayExpandGroupButton = (
+      alertGroup, alertIndex, showingTriaged) => {
+    if (showingTriaged) {
+      return (alertIndex === 0) && alertGroup.alerts.length > 1;
+    }
+    return (alertIndex === alertGroup.alerts.findIndex(a => !a.bugId)) && (
+      alertGroup.alerts.length > (1 + alertGroup.triaged.count));
+  };
+
+  AlertsTable.shouldDisplayExpandTriagedButton = (
+      showingTriaged, alertGroup, alertIndex) => {
+    if (showingTriaged || (alertGroup.triaged.count === 0)) return false;
+    return alertIndex === alertGroup.alerts.findIndex(a => !a.bugId);
+  };
+
+  AlertsTable.compareAlerts = (alertA, alertB, sortColumn) => {
+    let valueA = alertA[sortColumn];
+    let valueB = alertB[sortColumn];
+    if (sortColumn === 'percentDeltaValue') {
+      valueA = Math.abs(valueA);
+      valueB = Math.abs(valueB);
+    }
+    if (typeof valueA === 'string') return valueA.localeCompare(valueB);
+    return valueA - valueB;
+  };
+
+  AlertsTable.sortGroups = (
+      alertGroups, sortColumn, sortDescending, showingTriaged) => {
+    const factor = sortDescending ? -1 : 1;
+    if (sortColumn === 'count') {
+      alertGroups = [...alertGroups];
+      // See AlertsTable.getExpandGroupButtonLabel_.
+      if (showingTriaged) {
+        alertGroups.sort((groupA, groupB) =>
+          factor * (groupA.alerts.length - groupB.alerts.length));
+      } else {
+        alertGroups.sort((groupA, groupB) =>
+          factor * ((groupA.alerts.length - groupA.triaged.count) -
+            (groupB.alerts.length - groupB.triaged.count)));
+      }
+    } else if (sortColumn === 'triaged') {
+      alertGroups = [...alertGroups];
+      alertGroups.sort((groupA, groupB) =>
+        factor * (groupA.triaged.count - groupB.triaged.count));
+    } else {
+      alertGroups = alertGroups.map(group => {
+        const alerts = Array.from(group.alerts);
+        alerts.sort((alertA, alertB) => factor * AlertsTable.compareAlerts(
+            alertA, alertB, sortColumn));
+        return {
+          ...group,
+          alerts,
+        };
+      });
+      alertGroups.sort((groupA, groupB) => factor * AlertsTable.compareAlerts(
+          groupA.alerts[0], groupB.alerts[0], sortColumn));
+    }
+    return alertGroups;
+  };
+
   AlertsTable.PLACEHOLDER_ALERT_GROUPS = [];
-  const DASHES = '-'.repeat(5);
+  AlertsTable.DASHES = '-'.repeat(5);
   for (let i = 0; i < 5; ++i) {
     AlertsTable.PLACEHOLDER_ALERT_GROUPS.push({
       isSelected: false,
@@ -153,13 +238,14 @@ tr.exportTo('cp', () => {
       },
       alerts: [
         {
-          bugId: DASHES,
-          revisions: DASHES,
-          testSuite: DASHES,
-          measurement: DASHES,
-          master: DASHES,
-          bot: DASHES,
-          testCase: DASHES,
+          bugId: AlertsTable.DASHES,
+          startRevision: AlertsTable.DASHES,
+          endRevision: AlertsTable.DASHES,
+          suite: AlertsTable.DASHES,
+          measurement: AlertsTable.DASHES,
+          master: AlertsTable.DASHES,
+          bot: AlertsTable.DASHES,
+          case: AlertsTable.DASHES,
           deltaValue: 0,
           deltaUnit: tr.b.Unit.byName.countDelta_biggerIsBetter,
           percentDeltaValue: 0,
@@ -172,19 +258,24 @@ tr.exportTo('cp', () => {
 
   AlertsTable.State = {
     previousSelectedAlertKey: options => undefined,
-    alertGroups: options => AlertsTable.PLACEHOLDER_ALERT_GROUPS,
-    areAlertGroupsPlaceholders: options => true,
-    showBugColumn: options => true,
-    showMasterColumn: options => true,
-    showTestCaseColumn: options => true,
-    showTriagedColumn: options => true,
+    alertGroups: options => options.alertGroups ||
+      AlertsTable.PLACEHOLDER_ALERT_GROUPS,
+    selectedAlertsCount: options => 0,
+    showBugColumn: options => options.showBugColumn !== false,
+    showMasterColumn: options => options.showMasterColumn !== false,
+    showCaseColumn: options => options.showCaseColumn !== false,
+    showTriagedColumn: options => options.showTriagedColumn !== false,
     showingTriaged: options => options.showingTriaged || false,
-    sortColumn: options => options.sortColumn || 'revisions',
+    sortColumn: options => options.sortColumn || 'startRevision',
     sortDescending: options => options.sortDescending || false,
   };
 
   AlertsTable.properties = cp.buildProperties('state', AlertsTable.State);
   AlertsTable.buildState = options => cp.buildState(AlertsTable.State, options);
+
+  AlertsTable.properties.areAlertGroupsPlaceholders = {
+    computed: 'arePlaceholders_(alertGroups)',
+  };
 
   AlertsTable.actions = {
     selectAllAlerts: statePath => async(dispatch, getState) => {
@@ -216,10 +307,12 @@ tr.exportTo('cp', () => {
 
   AlertsTable.reducers = {
     sort: (state, action, rootState) => {
-      if (state.areAlertGroupsPlaceholders) return state;
+      if (state.alertGroups === AlertsTable.PLACEHOLDER_ALERT_GROUPS) {
+        return state;
+      }
       const sortDescending = state.sortDescending ^ (state.sortColumn ===
           action.sortColumn);
-      const alertGroups = cp.AlertsSection.sortGroups(
+      const alertGroups = AlertsTable.sortGroups(
           state.alertGroups, action.sortColumn, sortDescending);
       return {
         ...state,
@@ -293,7 +386,7 @@ tr.exportTo('cp', () => {
             state.alertGroups, `${action.alertGroupIndex}.alerts`, alerts);
       }
 
-      const selectedAlertsCount = cp.AlertsSection.getSelectedAlerts(
+      const selectedAlertsCount = AlertsTable.getSelectedAlerts(
           alertGroups).length;
       return {
         ...state,
@@ -319,15 +412,11 @@ tr.exportTo('cp', () => {
       return {
         ...state,
         alertGroups,
-        selectedAlertsCount: cp.AlertsSection.getSelectedAlerts(
-            alertGroups).length,
+        selectedAlertsCount: AlertsTable.getSelectedAlerts(alertGroups).length,
       };
     },
   };
 
   cp.ElementBase.register(AlertsTable);
-
-  return {
-    AlertsTable,
-  };
+  return {AlertsTable};
 });

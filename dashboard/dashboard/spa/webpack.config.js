@@ -12,58 +12,27 @@ const {
   WEBPACK_THIRD_PARTY: thirdParty,
 } = process.env;
 
-const UglifyJsPlugin = require(`${nodeModules}/uglifyjs-webpack-plugin`);
-const terser = require(`${nodeModules}/terser`);
-const terserPackage = require(`${nodeModules}/terser/package.json`);
-
-const uglifier = new UglifyJsPlugin({
-  // Change the minifier to fabiosantoscode/terser for ES2018+ support.
-  minify(file, sourceMap) {
-    // https://github.com/fabiosantoscode/terser#minify-options
-    const terserOptions = {};
-
-    if (sourceMap) {
-      terserOptions.sourceMap = {
-        content: sourceMap,
-      };
-    }
-
-    return terser.minify(file, terserOptions);
-  },
-
-  // Invalidate cache based on terser's version.
-  cache: true,
-  cacheKeys(defaultCacheKeys) {
-    return Object.assign({}, defaultCacheKeys, {
-      terser: terserPackage.version
-    });
-  },
-
-  // Include source maps
-  sourceMap: true,
-});
-
 module.exports = {
   entry: {
     'service-worker': path.resolve(__dirname, 'service-worker.js'),
   },
   output: {
     filename: '[name].js',
-    sourceMapFilename: '[name].js.map',
     path: outputPath,
   },
   optimization: {
-    minimizer: [uglifier],
+    minimizer: [],
   },
   resolve: {
     modules: [thirdParty],
     alias: {
       '/idb/idb.js': path.resolve(thirdParty, 'idb', 'idb.js'),
+      '/tsmon_client/tsmon-client.js': path.resolve(
+          thirdParty, 'tsmon_client', 'tsmon-client.js'),
     },
   },
   resolveLoader: {
     modules: [nodeModules],
   },
   mode: 'production',
-  devtool: 'source-map',
 };

@@ -30,9 +30,9 @@ class ChopsSigninAware extends Polymer.Element {
 
   static get properties() {
     return {
-      authHeaders: Object,
-      profile: Object,
-      signedIn: Boolean,
+      authHeaders: {type: Object, notify: true, readOnly: true},
+      profile: {type: Object, notify: true, readOnly: true},
+      signedIn: {type: Boolean, notify: true, readOnly: true},
     };
   }
 
@@ -46,14 +46,20 @@ class ChopsSigninAware extends Polymer.Element {
     window.removeEventListener('user-update', this.onUserUpdate_);
   }
 
-  async updateProperties_() {
-    this.authHeaders = await window.getAuthorizationHeaders();
-    this.profile = window.getUserProfileSync();
-    this.signedIn = !!this.profile;
+  updateProperties_() {
+    const self = this;
+    return window.getAuthorizationHeaders().then(function(headers) {
+      self._setAuthHeaders(headers);
+      self._setProfile(window.getUserProfileSync());
+      self._setSignedIn(!!self.profile);
+    });
   }
 
-  async onUserUpdate_() {
-    this.dispatchEvent(new CustomEvent('user-update'));
+  onUserUpdate_() {
+    const self = this;
+    return this.updateProperties_().then(function() {
+      self.dispatchEvent(new CustomEvent('user-update'));
+    });
   }
 }
 

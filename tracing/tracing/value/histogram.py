@@ -501,6 +501,8 @@ def ExtendUnitNames():
   for name in list(UNIT_NAMES):
     UNIT_NAMES.append(name + '_biggerIsBetter')
     UNIT_NAMES.append(name + '_smallerIsBetter')
+    UNIT_NAMES.append(name + '-')
+    UNIT_NAMES.append(name + '+')
 
 ExtendUnitNames()
 
@@ -566,7 +568,7 @@ class Histogram(object):
         'Unrecognized unit "%r"' % unit)
 
     if bin_boundaries is None:
-      base_unit = unit.split('_')[0]
+      base_unit = unit.split('_')[0].strip('+-')
       bin_boundaries = DEFAULT_BOUNDARIES_FOR_UNIT[base_unit]
 
     # Serialize bin boundaries here instead of holding a reference to it in case
@@ -592,6 +594,35 @@ class Histogram(object):
     self._unit = unit
 
     self._max_num_sample_values = self._GetDefaultMaxNumSampleValues()
+
+  @classmethod
+  def Create(cls, name, unit, samples, bin_boundaries=None, description='',
+             summary_options=None, diagnostics=None):
+    hist = cls(name, unit, bin_boundaries)
+    hist.description = description
+    if summary_options:
+      hist.CustomizeSummaryOptions(summary_options)
+    if diagnostics:
+      for name, diag in diagnostics.items():
+        hist.diagnostics[name] = diag
+
+    if not isinstance(samples, list):
+      samples = [samples]
+    for sample in samples:
+      if isinstance(sample, tuple) and len(sample) == 2:
+        hist.AddSample(sample[0], sample[1])
+      else:
+        hist.AddSample(sample)
+
+    return hist
+
+  @property
+  def description(self):
+    return self._description
+
+  @description.setter
+  def description(self, d):
+    self._description = d
 
   @property
   def nan_diagnostic_maps(self):

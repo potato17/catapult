@@ -16,6 +16,16 @@ tr.exportTo('cp', () => {
           (minimapLayout ? minimapLayout.lines : []));
     }
 
+    async onGetTooltip_(event) {
+      const p = event.detail.nearestPoint;
+      this.dispatch(Redux.UPDATE(this.statePath, {
+        cursorRevision: p.x,
+        cursorScalar: new tr.b.Scalar(p.datum.unit, p.y),
+      }));
+      // Don't reset cursor on mouseLeave -- allow users to scroll through
+      // sparklines.
+    }
+
     async onMenuKeyup_(event) {
       if (event.key === 'Escape') {
         await this.dispatch('showOptions', this.statePath, false);
@@ -47,22 +57,6 @@ tr.exportTo('cp', () => {
       await this.dispatch('chartClick', this.statePath);
     }
 
-    async onDotClick_(event) {
-      await this.dispatch('dotClick', this.statePath,
-          event.detail.ctrlKey,
-          event.detail.lineIndex,
-          event.detail.datumIndex);
-    }
-
-    async onDotMouseOver_(event) {
-      await this.dispatch('dotMouseOver', this.statePath,
-          event.detail.lineIndex);
-    }
-
-    async onDotMouseOut_(event) {
-      await this.dispatch('dotMouseOut', this.statePath);
-    }
-
     async onBrush_(event) {
       await this.dispatch('brushChart', this.statePath,
           event.detail.brushIndex,
@@ -92,9 +86,12 @@ tr.exportTo('cp', () => {
       this.dispatch('load', this.statePath);
     }
 
-    observeLinkedCursorRevision_() {
+    observeLinkedCursor_() {
       if (!this.isLinked) return;
-      // TODO
+      this.dispatch(Redux.UPDATE(this.statePath, {
+        cursorRevision: this.linkedCursorRevision,
+        cursorScalar: this.linkedCursorScalar,
+      }));
     }
 
     observeLinkedRevisions_() {
@@ -133,6 +130,18 @@ tr.exportTo('cp', () => {
         this.dispatch('updateStale', this.statePath);
       }
     }
+
+    observeCursor_(cursorRevision, cursorScalar) {
+      this.dispatch('setCursors', this.statePath);
+      if (this.isLinked &&
+          (this.cursorRevision !== this.linkedCursorRevision ||
+           this.cursorScalar !== this.linkedCursorScalar)) {
+        this.dispatch(Redux.UPDATE(this.linkedStatePath, {
+          linkedCursorRevision: this.cursorRevision,
+          linkedCursorScalar: this.cursorScalar,
+        }));
+      }
+    }
   }
 
   ChartPair.State = {
@@ -143,8 +152,6 @@ tr.exportTo('cp', () => {
         ...cp.ChartTimeseries.buildState({
           levelOfDetail: cp.LEVEL_OF_DETAIL.XY,
         }),
-        dotCursor: '',
-        dotRadius: 0,
         graphHeight: 40,
       };
       minimapLayout.xAxis.height = 15;
@@ -155,6 +162,7 @@ tr.exportTo('cp', () => {
     chartLayout: options => {
       const chartLayout = cp.ChartTimeseries.buildState({
         levelOfDetail: cp.LEVEL_OF_DETAIL.ANNOTATIONS,
+        showTooltip: true,
       });
       chartLayout.xAxis.height = 15;
       chartLayout.xAxis.showTickLines = true;
@@ -165,6 +173,7 @@ tr.exportTo('cp', () => {
     isShowingOptions: options => false,
     isLinked: options => options.isLinked !== false,
     cursorRevision: options => 0,
+    cursorScalar: options => undefined,
     minRevision: options => options.minRevision,
     maxRevision: options => options.maxRevision,
     mode: options => options.mode || 'normalizeUnit',
@@ -175,15 +184,17 @@ tr.exportTo('cp', () => {
   ChartPair.buildState = options => cp.buildState(ChartPair.State, options);
 
   ChartPair.observers = [
-    'observeLinkedCursorRevision_(linkedCursorRevision)',
+    'observeLinkedCursor_(linkedCursorRevision, linkedCursorScalar)',
     'observeLinkedRevisions_(linkedMinRevision, linkedMaxRevision)',
     'observeLinkedMode_(linkedMode)',
     'observeLinkedZeroYAxis_(linkedZeroYAxis)',
     'observeLinkedFixedXAxis_(linkedFixedXAxis)',
+    'observeCursor_(cursorRevision, cursorScalar)',
   ];
 
   ChartPair.LinkedState = {
     linkedCursorRevision: options => undefined,
+    linkedCursorScalar: options => undefined,
     linkedMinRevision: options => options.minRevision,
     linkedMaxRevision: options => options.maxRevision,
     linkedMode: options => options.mode || 'normalizeUnit',
@@ -203,6 +214,13 @@ tr.exportTo('cp', () => {
   ChartPair.properties.lineDescriptors.observer = 'observeLineDescriptors_';
 
   ChartPair.actions = {
+    setCursors: statePath => async(dispatch, getState) => {
+      dispatch({
+        type: ChartPair.reducers.setCursors.name,
+        statePath,
+      });
+    },
+
     updateRevisions: (statePath, minRevision, maxRevision) =>
       async(dispatch, getState) => {
         const state = Polymer.Path.get(getState(), statePath);
@@ -295,7 +313,7 @@ tr.exportTo('cp', () => {
         if (!ts) return Infinity;
         const datum = ts[0];
         if (datum === undefined) return Infinity;
-        return cp.ChartTimeseries.getX(datum);
+        return datum.revision;
       }));
       if (firstRevision === Infinity) {
         firstRevision = undefined;
@@ -305,7 +323,7 @@ tr.exportTo('cp', () => {
         if (!ts) return -Infinity;
         const datum = ts[ts.length - 1];
         if (datum === undefined) return -Infinity;
-        return cp.ChartTimeseries.getX(datum);
+        return datum.revision;
       }));
       if (lastRevision === -Infinity) {
         lastRevision = undefined;
@@ -314,7 +332,7 @@ tr.exportTo('cp', () => {
       let minRevision = state.minRevision;
       if (!minRevision || minRevision >= lastRevision) {
         let closestTimestamp = Infinity;
-        const minTimestampMs = new Date() - cp.MS_PER_MONTH;
+        const minTimestampMs = new Date() - MS_PER_MONTH;
         for (const timeseries of timeserieses) {
           if (!timeseries || !timeseries.length) continue;
           const datum = tr.b.findClosestElementInSortedArray(
@@ -323,7 +341,7 @@ tr.exportTo('cp', () => {
           const timestamp = datum.timestamp;
           if (Math.abs(timestamp - minTimestampMs) <
               Math.abs(closestTimestamp - minTimestampMs)) {
-            minRevision = cp.ChartTimeseries.getX(datum);
+            minRevision = datum.revision;
             closestTimestamp = timestamp;
           }
         }
@@ -374,23 +392,6 @@ tr.exportTo('cp', () => {
       dispatch(Redux.UPDATE(`${statePath}.chartLayout.xAxis`, {brushes: []}));
     },
 
-    dotClick: (statePath, ctrlKey, lineIndex, datumIndex) =>
-      async(dispatch, getState) => {
-        dispatch({
-          type: ChartPair.reducers.dotClick.name,
-          statePath,
-          ctrlKey,
-          lineIndex,
-          datumIndex,
-        });
-      },
-
-    dotMouseOver: (statePath, lineIndex) => async(dispatch, getState) => {
-    },
-
-    dotMouseOut: (statePath, lineIndex) => async(dispatch, getState) => {
-    },
-
     mode: (statePath, mode) => async(dispatch, getState) => {
       dispatch(Redux.UPDATE(statePath, {mode}));
       ChartPair.actions.load(statePath)(dispatch, getState);
@@ -402,6 +403,93 @@ tr.exportTo('cp', () => {
   };
 
   ChartPair.reducers = {
+    setCursors: (state, action, rootState) => {
+      let minimapXPct;
+      let chartXPct;
+      let color;
+      let chartYPct;
+
+      if (state.cursorRevision && state.chartLayout &&
+          state.chartLayout.xAxis && !state.chartLayout.xAxis.range.isEmpty) {
+        if (state.fixedXAxis) {
+          // Bisect to find point nearest to cursorRevision.
+          minimapXPct = tr.b.findClosestElementInSortedArray(
+              state.minimapLayout.lines[0].data,
+              d => d.x,
+              state.cursorRevision).xPct + '%';
+
+          let nearestDatum;
+          for (const line of state.chartLayout.lines) {
+            const datum = tr.b.findClosestElementInSortedArray(
+                line.data, d => d.x, state.cursorRevision);
+            if (!nearestDatum ||
+                (Math.abs(state.cursorRevision - datum.x) <
+                 Math.abs(state.cursorRevision - nearestDatum.x))) {
+              nearestDatum = datum;
+            }
+          }
+          chartXPct = nearestDatum.xPct + '%';
+        } else {
+          minimapXPct = state.minimapLayout.xAxis.range.normalize(
+              state.cursorRevision) * 100 + '%';
+          chartXPct = state.chartLayout.xAxis.range.normalize(
+              state.cursorRevision) * 100 + '%';
+        }
+
+        if (state.chartLayout.tooltip &&
+            state.chartLayout.tooltip.isVisible) {
+          color = tr.b.Color.fromString(state.chartLayout.tooltip.color);
+          color.a = 0.8;
+        }
+      }
+
+      if (state.cursorScalar && state.chartLayout && state.chartLayout.yAxis) {
+        let yRange;
+        if (state.mode === 'normalizeUnit') {
+          if (state.chartLayout.yAxis.rangeForUnitName) {
+            yRange = state.chartLayout.yAxis.rangeForUnitName.get(
+                state.cursorScalar.unit.baseUnit.unitName);
+          }
+        } else if (state.chartLayout.lines.length === 1) {
+          yRange = state.chartLayout.lines[0].yRange;
+        }
+        if (yRange) {
+          chartYPct = (1 - yRange.normalize(
+              state.cursorScalar.value)) * 100 + '%';
+        }
+      }
+
+      return {
+        ...state,
+        minimapLayout: {
+          ...state.minimapLayout,
+          xAxis: {
+            ...state.minimapLayout.xAxis,
+            cursor: {
+              pct: minimapXPct,
+            },
+          },
+        },
+        chartLayout: {
+          ...state.chartLayout,
+          xAxis: {
+            ...state.chartLayout.xAxis,
+            cursor: {
+              pct: chartXPct,
+              color,
+            },
+          },
+          yAxis: {
+            ...state.chartLayout.yAxis,
+            cursor: {
+              color,
+              pct: chartYPct,
+            },
+          },
+        },
+      };
+    },
+
     toggleLinked: (state, {linkedStatePath}, rootState) => {
       state = {...state, isLinked: !state.isLinked};
       if (state.isLinked) {
@@ -421,7 +509,7 @@ tr.exportTo('cp', () => {
 
     receiveTestSuites: (state, action, rootState) => {
       if (rootState.userEmail &&
-          (action.options.length < state.testSuite.options.length)) {
+          (action.options.length < state.suite.options.length)) {
         // The loadTestSuites() in actions.connected might race with the
         // loadTestSuites() in actions.authChange. If the internal test suites
         // load first then the public test suites load, ignore the public test
@@ -429,12 +517,12 @@ tr.exportTo('cp', () => {
         // the empty string, so load the public test suites.
         return state;
       }
-      const testSuite = {
-        ...state.testSuite,
+      const suite = {
+        ...state.suite,
         options: action.options,
         label: `Test suites (${action.count})`,
       };
-      return {...state, testSuite};
+      return {...state, suite};
     },
 
     brushMinimap: (state, action, rootState) => {
@@ -443,9 +531,10 @@ tr.exportTo('cp', () => {
       for (const brush of state.minimapLayout.xAxis.brushes) {
         const index = tr.b.findLowIndexInSortedArray(
             state.minimapLayout.lines[0].data,
-            datum => parseFloat(datum.xPct),
+            datum => datum.xPct,
             parseFloat(brush.xPct));
         const datum = state.minimapLayout.lines[0].data[index];
+        if (!datum) continue;
         range.addValue(datum.x);
       }
       const minRevision = range.min;
@@ -493,9 +582,9 @@ tr.exportTo('cp', () => {
           state.bot.selectedOptions.length < 4) {
         title += ' on ' + state.bot.selectedOptions.join(', ');
       }
-      if (state.testCase.selectedOptions.length > 0 &&
-          state.testCase.selectedOptions.length < 4) {
-        title += ' for ' + state.testCase.selectedOptions.join(', ');
+      if (state.case.selectedOptions.length > 0 &&
+          state.case.selectedOptions.length < 4) {
+        title += ' for ' + state.case.selectedOptions.join(', ');
       }
       return {
         ...state,
@@ -521,28 +610,28 @@ tr.exportTo('cp', () => {
         label: `Bots (${action.descriptor.bots.size})`,
       };
 
-      const testCaseOptions = [];
-      if (action.descriptor.testCases.size) {
-        testCaseOptions.push({
-          label: `All ${action.descriptor.testCases.size} test cases`,
+      const caseOptions = [];
+      if (action.descriptor.cases.size) {
+        caseOptions.push({
+          label: `All ${action.descriptor.cases.size} test cases`,
           isExpanded: true,
           value: '*',
-          options: cp.OptionGroup.groupValues(action.descriptor.testCases),
+          options: cp.OptionGroup.groupValues(action.descriptor.cases),
         });
       }
 
-      const testCase = {
-        ...state.testCase,
-        optionValues: action.descriptor.testCases,
-        options: testCaseOptions,
-        label: `Test cases (${action.descriptor.testCases.size})`,
+      const cas = {
+        ...state.case,
+        optionValues: action.descriptor.cases,
+        options: caseOptions,
+        label: `Test cases (${action.descriptor.cases.size})`,
         tags: {
-          ...state.testCase.tags,
-          options: cp.OptionGroup.groupValues(action.descriptor.testCaseTags),
+          ...state.case.tags,
+          options: cp.OptionGroup.groupValues(action.descriptor.caseTags),
         },
       };
 
-      return {...state, measurement, bot, testCase};
+      return {...state, measurement, bot, case: cas};
     },
 
     finalizeParameters: (state, action, rootState) => {
@@ -563,44 +652,13 @@ tr.exportTo('cp', () => {
           bot.optionValues.has(b));
       }
 
-      const testCase = {
-        ...state.testCase,
-        selectedOptions: state.testCase.selectedOptions.filter(t =>
-          state.testCase.optionValues.has(t)),
+      const cas = {
+        ...state.case,
+        selectedOptions: state.case.selectedOptions.filter(t =>
+          state.case.optionValues.has(t)),
       };
 
-      return {...state, measurement, bot, testCase};
-    },
-
-    dotClick: (state, action, rootState) => {
-      const sequence = state.chartLayout.lines[action.lineIndex];
-      if (!sequence || !sequence.data[action.datumIndex]) return state;
-      const datumX = parseFloat(sequence.data[action.datumIndex].xPct);
-      let prevX = 0;
-      if (action.datumIndex > 0) {
-        prevX = parseFloat(sequence.data[action.datumIndex - 1].xPct);
-      }
-      let nextX = 100;
-      if (action.datumIndex < sequence.data.length - 1) {
-        nextX = parseFloat(sequence.data[action.datumIndex + 1].xPct);
-      }
-      const brushes = [
-        {xPct: ((datumX + prevX) / 2) + '%'},
-        {xPct: ((datumX + nextX) / 2) + '%'},
-      ];
-      if (action.ctrlKey) {
-        brushes.push.apply(brushes, state.chartLayout.xAxis.brushes);
-      }
-      return {
-        ...state,
-        chartLayout: {
-          ...state.chartLayout,
-          xAxis: {
-            ...state.chartLayout.xAxis,
-            brushes,
-          },
-        },
-      };
+      return {...state, measurement, bot, case: cas};
     },
 
     updateStale: (state, action, rootState) => {
@@ -613,7 +671,7 @@ tr.exportTo('cp', () => {
       }
 
       const now = new Date();
-      const staleMs = window.IS_DEBUG ? 1 : MILLIS_PER_DAY;
+      const staleMs = window.IS_DEBUG ? 1 : MS_PER_DAY;
       const staleTimestamp = now - staleMs;
       let anyStale = false;
       const lines = state.chartLayout.lines.map(line => {
@@ -638,8 +696,10 @@ tr.exportTo('cp', () => {
     },
   };
 
-  const MILLIS_PER_DAY = tr.b.convertUnit(
+  const MS_PER_DAY = tr.b.convertUnit(
       1, tr.b.UnitScale.TIME.DAY, tr.b.UnitScale.TIME.MILLI_SEC);
+  const MS_PER_MONTH = tr.b.convertUnit(
+      1, tr.b.UnitScale.TIME.MONTH, tr.b.UnitScale.TIME.MILLI_SEC);
 
   ChartPair.findFirstNonEmptyLineDescriptor = async(
     lineDescriptors, refStatePath, dispatch, getState) => {

@@ -13,15 +13,9 @@ found in the LICENSE file.
 <script type="module" src="/dashboard/spa/timeseries-cache-request.js"></script>
 <script type="module">
 'use strict';
-import cacheRequest from './cache-request-base.js';
+import testUtils from './cache-request-base.js';
 import TimeseriesCacheRequest from './timeseries-cache-request.js';
 
-global.testUtils = cacheRequest;
-global.TimeseriesCacheRequest = TimeseriesCacheRequest;
-</script>
-
-<script>
-'use strict';
 suite('TimeseriesCacheRequest', function() {
   class MockFetchEvent {
     constructor(parameters) {
@@ -42,9 +36,11 @@ suite('TimeseriesCacheRequest', function() {
     }
   }
 
-  function mockApiResponse({levelOfDetail, minRevision = 1, maxRevision = 3}) {
-    const columns = cp.getColumnsByLevelOfDetail(levelOfDetail, 'avg');
+  function mockApiResponse({
+    levelOfDetail, columns, minRevision = 1, maxRevision = 5}) {
+    if (!columns) columns = cp.getColumnsByLevelOfDetail(levelOfDetail, 'avg');
     const data = [];
+    minRevision = parseInt(minRevision);
     for (let i = minRevision; i <= maxRevision; ++i) {
       const dataPoint = [];
       for (const _ of columns) {
@@ -61,6 +57,12 @@ suite('TimeseriesCacheRequest', function() {
 
   function mockFetch(response) {
     window.fetch = async() => testUtils.jsonResponse(response);
+  }
+
+  async function deleteDatabase(parameters) {
+    const databaseName = TimeseriesCacheRequest.databaseName(parameters);
+    await testUtils.flushWriterForTest();
+    await testUtils.deleteDatabaseForTest(databaseName);
   }
 
   let originalFetch;
@@ -326,6 +328,289 @@ suite('TimeseriesCacheRequest', function() {
     response.data = response.data.map(d => cp.normalize(
         [...cp.getColumnsByLevelOfDetail(cp.LEVEL_OF_DETAIL.XY, 'avg')], d));
     assert.include(results, response);
+  });
+
+  test('in progress different measurement', async() => {
+    const parametersA = {
+      testSuite: 'in progress containing',
+      measurement: 'AAA',
+      bot: 'bot',
+      statistic: 'avg',
+      levelOfDetail: cp.LEVEL_OF_DETAIL.XY,
+    };
+    const parametersB = {
+      ...parametersA,
+      measurement: 'BBB',
+    };
+    const requestA = new TimeseriesCacheRequest(new MockFetchEvent(
+        parametersA));
+    const requestB = new TimeseriesCacheRequest(new MockFetchEvent(
+        parametersB));
+
+    let fetches = 0;
+    window.fetch = async(url, options) => {
+      ++fetches;
+      return testUtils.jsonResponse(mockApiResponse({
+        levelOfDetail: cp.LEVEL_OF_DETAIL.XY,
+        minRevision: options.body.get('min_revision') || undefined,
+        maxRevision: options.body.get('max_revision') || undefined,
+      }));
+    };
+
+    // Start A before B
+    const resultsA = [];
+    const doneA = (async() => {
+      for await (const result of requestA.generateResults()) {
+        resultsA.push(result);
+      }
+    })();
+    const resultsB = [];
+    const doneB = (async() => {
+      for await (const result of requestB.generateResults()) {
+        resultsB.push(result);
+      }
+    })();
+    await Promise.all([doneA, doneB]);
+
+    assert.strictEqual(2, fetches);
+
+    const responseA = mockApiResponse(parametersA);
+    responseA.data = responseA.data.map(d => cp.normalize(
+        [...cp.getColumnsByLevelOfDetail(cp.LEVEL_OF_DETAIL.XY, 'avg')], d));
+    assert.include(resultsA, responseA);
+
+    const responseB = mockApiResponse(parametersB);
+    responseB.data = responseB.data.map(d => cp.normalize(
+        [...cp.getColumnsByLevelOfDetail(cp.LEVEL_OF_DETAIL.XY, 'avg')], d));
+    assert.include(resultsB, responseB);
+  });
+
+  test('in progress containing', async() => {
+    const parametersA = {
+      testSuite: 'in progress containing',
+      measurement: 'measurement',
+      bot: 'bot',
+      statistic: 'avg',
+      levelOfDetail: cp.LEVEL_OF_DETAIL.XY,
+    };
+    const parametersB = {
+      ...parametersA,
+      minRevision: 2,
+      maxRevision: 4,
+    };
+    const requestA = new TimeseriesCacheRequest(new MockFetchEvent(
+        parametersA));
+    const requestB = new TimeseriesCacheRequest(new MockFetchEvent(
+        parametersB));
+
+    let fetches = 0;
+    window.fetch = async(url, options) => {
+      ++fetches;
+      return testUtils.jsonResponse(mockApiResponse({
+        levelOfDetail: cp.LEVEL_OF_DETAIL.XY,
+        minRevision: options.body.get('min_revision') || undefined,
+        maxRevision: options.body.get('max_revision') || undefined,
+      }));
+    };
+
+    // Start A before B
+    const resultsA = [];
+    const doneA = (async() => {
+      for await (const result of requestA.generateResults()) {
+        resultsA.push(result);
+      }
+    })();
+    const resultsB = [];
+    const doneB = (async() => {
+      for await (const result of requestB.generateResults()) {
+        resultsB.push(result);
+      }
+    })();
+    await Promise.all([doneA, doneB]);
+
+    assert.strictEqual(1, fetches);
+
+    const responseA = mockApiResponse(parametersA);
+    responseA.data = responseA.data.map(d => cp.normalize(
+        [...cp.getColumnsByLevelOfDetail(cp.LEVEL_OF_DETAIL.XY, 'avg')], d));
+    assert.include(resultsA, responseA);
+
+    const responseB = mockApiResponse(parametersB);
+    responseB.data = responseB.data.map(d => cp.normalize(
+        [...cp.getColumnsByLevelOfDetail(cp.LEVEL_OF_DETAIL.XY, 'avg')], d));
+    assert.include(resultsB, responseB);
+  });
+
+  test('in progress contained', async() => {
+    const parametersA = {
+      testSuite: 'in progress contained',
+      measurement: 'measurement',
+      bot: 'bot',
+      statistic: 'avg',
+      levelOfDetail: cp.LEVEL_OF_DETAIL.XY,
+    };
+    const parametersB = {
+      ...parametersA,
+      minRevision: 2,
+      maxRevision: 4,
+    };
+    const requestA = new TimeseriesCacheRequest(new MockFetchEvent(
+        parametersA));
+    const requestB = new TimeseriesCacheRequest(new MockFetchEvent(
+        parametersB));
+
+    let fetches = 0;
+    window.fetch = async(url, options) => {
+      ++fetches;
+      return testUtils.jsonResponse(mockApiResponse({
+        levelOfDetail: cp.LEVEL_OF_DETAIL.XY,
+        minRevision: options.body.get('min_revision') || undefined,
+        maxRevision: options.body.get('max_revision') || undefined,
+      }));
+    };
+
+    // Start B before A
+    const resultsB = [];
+    const doneB = (async() => {
+      for await (const result of requestB.generateResults()) {
+        resultsB.push(result);
+      }
+    })();
+    const resultsA = [];
+    const doneA = (async() => {
+      for await (const result of requestA.generateResults()) {
+        resultsA.push(result);
+      }
+    })();
+    await Promise.all([doneA, doneB]);
+
+    assert.strictEqual(1, fetches);
+
+    const responseA = mockApiResponse(parametersA);
+    responseA.data = responseA.data.map(d => cp.normalize(
+        [...cp.getColumnsByLevelOfDetail(cp.LEVEL_OF_DETAIL.XY, 'avg')], d));
+    assert.include(resultsA, responseA);
+
+    const responseB = mockApiResponse(parametersB);
+    responseB.data = responseB.data.map(d => cp.normalize(
+        [...cp.getColumnsByLevelOfDetail(cp.LEVEL_OF_DETAIL.XY, 'avg')], d));
+    assert.include(resultsB, responseB);
+  });
+
+  test('in progress containing xy, annotations', async() => {
+    const parametersA = {
+      testSuite: 'in progress containing xy, annotations',
+      measurement: 'measurement',
+      bot: 'bot',
+      statistic: 'avg',
+      levelOfDetail: cp.LEVEL_OF_DETAIL.XY,
+    };
+    const parametersB = {
+      ...parametersA,
+      minRevision: 2,
+      maxRevision: 4,
+      levelOfDetail: cp.LEVEL_OF_DETAIL.ANNOTATIONS,
+    };
+    const requestA = new TimeseriesCacheRequest(new MockFetchEvent(
+        parametersA));
+    const requestB = new TimeseriesCacheRequest(new MockFetchEvent(
+        parametersB));
+
+    let fetches = 0;
+    window.fetch = async(url, options) => {
+      ++fetches;
+      return testUtils.jsonResponse(mockApiResponse({
+        columns: options.body.get('columns').split(','),
+        minRevision: options.body.get('min_revision') || undefined,
+        maxRevision: options.body.get('max_revision') || undefined,
+      }));
+    };
+
+    // Start A before B
+    const resultsA = [];
+    const doneA = (async() => {
+      for await (const result of requestA.generateResults()) {
+        resultsA.push(result);
+      }
+    })();
+    const resultsB = [];
+    const doneB = (async() => {
+      for await (const result of requestB.generateResults()) {
+        resultsB.push(result);
+      }
+    })();
+    await Promise.all([doneA, doneB]);
+
+    assert.strictEqual(2, fetches);
+
+    const responseA = mockApiResponse(parametersA);
+    responseA.data = responseA.data.map(d => cp.normalize(
+        [...cp.getColumnsByLevelOfDetail(cp.LEVEL_OF_DETAIL.XY, 'avg')], d));
+    assert.include(resultsA, responseA);
+
+    const responseB = mockApiResponse(parametersB);
+    responseB.data = responseB.data.map(d => cp.normalize(
+        [...cp.getColumnsByLevelOfDetail(
+            cp.LEVEL_OF_DETAIL.ANNOTATIONS, 'avg')], d));
+    assert.include(resultsB, responseB);
+  });
+
+  test('in progress contained xy, annotations', async() => {
+    const parametersA = {
+      testSuite: 'in progress contained xy, annotations',
+      measurement: 'measurement',
+      bot: 'bot',
+      statistic: 'avg',
+      levelOfDetail: cp.LEVEL_OF_DETAIL.XY,
+    };
+    const parametersB = {
+      ...parametersA,
+      minRevision: 2,
+      maxRevision: 4,
+      levelOfDetail: cp.LEVEL_OF_DETAIL.ANNOTATIONS,
+    };
+    const requestA = new TimeseriesCacheRequest(new MockFetchEvent(
+        parametersA));
+    const requestB = new TimeseriesCacheRequest(new MockFetchEvent(
+        parametersB));
+
+    let fetches = 0;
+    window.fetch = async(url, options) => {
+      ++fetches;
+      return testUtils.jsonResponse(mockApiResponse({
+        columns: options.body.get('columns').split(','),
+        minRevision: options.body.get('min_revision') || undefined,
+        maxRevision: options.body.get('max_revision') || undefined,
+      }));
+    };
+
+    // Start B before A
+    const resultsB = [];
+    const doneB = (async() => {
+      for await (const result of requestB.generateResults()) {
+        resultsB.push(result);
+      }
+    })();
+    const resultsA = [];
+    const doneA = (async() => {
+      for await (const result of requestA.generateResults()) {
+        resultsA.push(result);
+      }
+    })();
+    await Promise.all([doneA, doneB]);
+
+    assert.strictEqual(2, fetches);
+
+    const responseA = mockApiResponse(parametersA);
+    responseA.data = responseA.data.map(d => cp.normalize(
+        [...cp.getColumnsByLevelOfDetail(cp.LEVEL_OF_DETAIL.XY, 'avg')], d));
+    assert.include(resultsA, responseA);
+
+    const responseB = mockApiResponse(parametersB);
+    responseB.data = responseB.data.map(d => cp.normalize(
+        [...cp.getColumnsByLevelOfDetail(
+            cp.LEVEL_OF_DETAIL.ANNOTATIONS, 'avg')], d));
+    assert.include(resultsB, responseB);
   });
 });
 </script>

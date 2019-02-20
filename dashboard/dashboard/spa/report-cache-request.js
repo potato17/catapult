@@ -16,11 +16,11 @@ const STORES = [STORE_REPORTS, STORE_METADATA];
 export default class ReportCacheRequest extends CacheRequestBase {
   constructor(fetchEvent) {
     super(fetchEvent);
-    this.parseRequestPromise = this.parseRequest_();
+    this.parseRequestPromise = this.parseRequest();
     this.isTemplateDifferent_ = false;
   }
 
-  async parseRequest_() {
+  async parseRequest() {
     const body = await this.fetchEvent.request.clone().formData();
 
     if (!body.has('id')) throw new Error('Missing template id');
@@ -51,46 +51,44 @@ export default class ReportCacheRequest extends CacheRequestBase {
     this.fetchEvent.waitUntil(this.sendResults_());
   }
 
-  get generateResults() {
-    return async function* () {
-      await this.parseRequestPromise;
+  async* generateResults() {
+    await this.parseRequestPromise;
 
-      const otherRequest = await this.findInProgressRequest(async other => {
-        try {
-          await other.parseRequestPromise;
-        } catch (invalidOther) {
-          return false;
-        }
-        if (other.templateId !== this.templateId) return false;
-        return (other.revisions.join(',') === this.revisions.join(','));
-      });
-
-      if (otherRequest) {
-        // Be sure to call onComplete() to remove `this` from
-        // IN_PROGRESS_REQUESTS so that `otherRequest.generateResults()` doesn't
-        // await `this.generateResults()`.
-        this.onComplete();
-        this.readNetworkPromise = otherRequest.readNetworkPromise;
-      } else {
-        this.readNetworkPromise = this.readNetwork_();
+    const otherRequest = await this.findInProgressRequest(async other => {
+      try {
+        await other.parseRequestPromise;
+      } catch (invalidOther) {
+        return false;
       }
+      if (other.templateId !== this.templateId) return false;
+      return (other.revisions.join(',') === this.revisions.join(','));
+    });
 
-      const winner = await Promise.race([
-        this.readDatabase_().then(result => {
-          return {result, source: 'database'};
-        }),
-        this.readNetworkPromise.then(result => {
-          return {result, source: 'network'};
-        }),
-      ]);
-      if (winner.source === 'database' && winner.result) {
-        yield winner.result;
-      }
+    if (otherRequest) {
+      // Be sure to call onComplete() to remove `this` from IN_PROGRESS_REQUESTS
+      // so that `otherRequest.generateResults()` doesn't await
+      // `this.generateResults()`.
+      this.onComplete();
+      this.readNetworkPromise = otherRequest.readNetworkPromise;
+    } else {
+      this.readNetworkPromise = this.readNetwork_();
+    }
 
-      const networkResult = await this.readNetworkPromise;
-      yield networkResult;
-      this.scheduleWrite(networkResult);
-    };
+    const winner = await Promise.race([
+      this.readDatabase_().then(result => {
+        return {result, source: 'database'};
+      }),
+      this.readNetworkPromise.then(result => {
+        return {result, source: 'network'};
+      }),
+    ]);
+    if (winner.source === 'database' && winner.result) {
+      yield winner.result;
+    }
+
+    const networkResult = await this.readNetworkPromise;
+    yield networkResult;
+    this.scheduleWrite(networkResult);
   }
 
   async readNetwork_() {

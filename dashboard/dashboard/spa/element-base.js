@@ -43,6 +43,10 @@ tr.exportTo('cp', () => {
       return true;
     }
 
+    plural_(count, pluralSuffix = 's', singularSuffix = '') {
+      return cp.plural(count, pluralSuffix, singularSuffix);
+    }
+
     lengthOf_(seq) {
       if (seq === undefined) return 0;
       if (seq === null) return 0;
@@ -58,10 +62,6 @@ tr.exportTo('cp', () => {
 
     isEmpty_(seq) {
       return this.lengthOf_(seq) === 0;
-    }
-
-    _plural(num) {
-      return num === 1 ? '' : 's';
     }
 
     /**
@@ -101,5 +101,7 @@ tr.exportTo('cp', () => {
     cp.timeEventListeners(subclass);
   };
 
-  return {ElementBase};
+  return {
+    ElementBase,
+  };
 });

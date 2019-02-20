@@ -53,12 +53,11 @@ tr.exportTo('cp', () => {
     constructor(options) {
       super(options);
       this.method_ = 'POST';
-      this.measurement_ = options.measurement;
       this.body_ = new FormData();
-      this.body_.set('test_suite', options.testSuite);
+      this.body_.set('test_suite', options.suite);
       this.body_.set('measurement', options.measurement);
       this.body_.set('bot', options.bot);
-      if (options.testCase) this.body_.set('test_case', options.testCase);
+      if (options.case) this.body_.set('test_case', options.case);
 
       this.statistic_ = options.statistic || 'avg';
       if (options.statistic) {
@@ -111,35 +110,6 @@ tr.exportTo('cp', () => {
 
     get url_() {
       return '/api/timeseries2';
-    }
-
-    async localhostResponse_() {
-      let units = 'unitlessNumber';
-      if (this.measurement_.startsWith('memory:')) {
-        units = 'sizeInBytes_smallerIsBetter';
-      }
-      if (this.measurement_.startsWith('cpu:') ||
-          this.measurement_.startsWith('loading') ||
-          this.measurement_.startsWith('startup')) {
-        units = 'ms_smallerIsBetter';
-      }
-      if (this.measurement_.startsWith('power')) {
-        units = 'W_smallerIsBetter';
-      }
-      const data = [];
-      const sequenceLength = 100;
-      const nowMs = new Date() - 0;
-      for (let i = 0; i < sequenceLength; i += 1) {
-        data.push({
-          revision: i * 100,
-          timestamp: nowMs - ((sequenceLength - i - 1) * (2592105834 / 50)),
-          avg: parseInt(100 * Math.random()),
-          count: 1,
-          std: parseInt(50 * Math.random()),
-          // TODO diagnostics, revisions, alert
-        });
-      }
-      return {data: cp.denormalize(data, this.columns_), units};
     }
   }
 

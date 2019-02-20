@@ -8,6 +8,7 @@ npm install
 sed -i 's/ecmaVersion: 6/ecmaVersion: 9/g' node_modules/hydrolysis/lib/ast-utils/js-parse.js
 popd
 pushd dashboard
+ln -sf ../third_party/polymer-svg-template
 ln -sf ../third_party/polymer2
 ln -sf ../third_party/polymer2/bower_components
 ln -sf ../third_party/redux
@@ -19,8 +20,8 @@ ln -sf ../tracing/tracing_project.py
 popd
 ```
 
-In order to deploy v2spa.yaml to v2spa-dot-chromeperf.appspot.com, run
-`dashboard/bin/deploy_v2spa`. That serves a vulcanized HTML file at `/` and the
+In order to deploy app.yaml to v2spa-dot-chromeperf.appspot.com, run
+`dashboard/bin/deploy`. That serves a vulcanized HTML file at `/` and the
 same script request handlers as V1, which is configured in app.yaml and
 continues to be deployed to chromeperf.appspot.com by `dashboard/bin/deploy`.
 

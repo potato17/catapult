@@ -4,52 +4,12 @@
 */
 'use strict';
 tr.exportTo('cp', () => {
-  const SECTION_CLASSES_BY_TYPE = new Map([
-    cp.ChartSection,
-    cp.AlertsSection,
-    cp.ReportSection,
-    cp.PivotSection,
-  ].map(cls => [cls.is, cls]));
-
   const PRE_DESCRIBE_TEST_SUITES = [
     'system_health.common_desktop',
     'system_health.common_mobile',
     'system_health.memory_desktop',
     'system_health.memory_mobile',
   ];
-
-
-  class RecentBugsRequest extends cp.RequestBase {
-    constructor() {
-      super({});
-      this.method_ = 'POST';
-    }
-
-    get url_() {
-      return '/api/alerts/recent_bugs';
-    }
-
-    postProcess_(json) {
-      return json.bugs;
-    }
-
-    async localhostResponse_() {
-      const bugs = [];
-      function randInt(min, max) {
-        return min + parseInt(Math.random() * (max - min));
-      }
-      for (let i = 0; i < 50; ++i) {
-        bugs.push({
-          id: randInt(10000, 100000),
-          status: 'WontFix',
-          owner: {name: 'abc@chromium.org'},
-          summary: (randInt(0, 1000) + '% regression in whatever at ' +
-                    randInt(1e5, 1e6) + ':' + randInt(1e5, 1e6)),
-        });
-      }
-      return {bugs};
-    }
-  }
 
   class ChromeperfApp extends cp.ElementBase {
     async ready() {
@@ -184,9 +144,9 @@ tr.exportTo('cp', () => {
     ready: (statePath, routeParams) =>
       async(dispatch, getState) => {
         requestIdleCallback(async() => {
-          cp.ReadTestSuites();
-          await Promise.all(PRE_DESCRIBE_TEST_SUITES.map(testSuite =>
-            new cp.DescribeRequest({testSuite}).response));
+          new cp.TestSuitesRequest({}).response;
+          await Promise.all(PRE_DESCRIBE_TEST_SUITES.map(suite =>
+            new cp.DescribeRequest({suite}).response));
         });
 
         dispatch(Redux.CHAIN(
@@ -276,14 +236,14 @@ tr.exportTo('cp', () => {
       dispatch(Redux.UPDATE('', {
         userEmail: profile ? profile.getEmail() : '',
       }));
-      cp.ReadTestSuites();
+      new cp.TestSuitesRequest({}).response;
       if (profile) {
         ChromeperfApp.actions.getRecentBugs()(dispatch, getState);
       }
     },
 
     getRecentBugs: () => async(dispatch, getState) => {
-      const bugs = await new RecentBugsRequest().response;
+      const bugs = await new cp.RecentBugsRequest().response;
       const recentPerformanceBugs = bugs && bugs.map(
           cp.AlertsSection.transformBug);
       dispatch(Redux.UPDATE('', {recentPerformanceBugs}));
@@ -341,24 +301,28 @@ tr.exportTo('cp', () => {
       if (routeParams.get('sheriff') !== null ||
           routeParams.get('bug') !== null ||
           routeParams.get('ar') !== null) {
+        const options = cp.AlertsSection.newStateOptionsFromQueryParams(
+            routeParams);
         // Hide the report section and create a single alerts-section.
-        dispatch(Redux.UPDATE(statePath, {showingReportSection: false}));
-        dispatch({
-          type: ChromeperfApp.reducers.newAlerts.name,
-          statePath,
-          options: cp.AlertsSection.newStateOptionsFromQueryParams(
-              routeParams),
-        });
+        dispatch(Redux.CHAIN(
+            Redux.UPDATE(statePath, {showingReportSection: false}),
+            {
+              type: ChromeperfApp.reducers.newAlerts.name,
+              statePath,
+              options,
+            },
+        ));
         return;
       }
 
       if (routeParams.get('testSuite') !== null ||
+          routeParams.get('suite') !== null ||
           routeParams.get('chart') !== null) {
         // Hide the report section and create a single chart.
+        const options = cp.ChartSection.newStateOptionsFromQueryParams(
+            routeParams);
         dispatch(Redux.UPDATE(statePath, {showingReportSection: false}));
-        ChromeperfApp.actions.newChart(
-            statePath, cp.ChartSection.newStateOptionsFromQueryParams(
-                routeParams))(dispatch, getState);
+        ChromeperfApp.actions.newChart(statePath, options)(dispatch, getState);
         return;
       }
     },
@@ -550,12 +514,12 @@ tr.exportTo('cp', () => {
       return {...state, alertsSectionIds, alertsSectionsById};
     },
 
-    newChart: (state, action, rootState) => {
+    newChart: (state, {options}, rootState) => {
       for (const chart of Object.values(state.chartSectionsById)) {
         // If the user mashes the OPEN CHART button in the alerts-section, for
         // example, don't open multiple copies of the same chart.
-        if ((action.options && action.options.clone) ||
-            !cp.ChartSection.matchesOptions(chart, action.options)) {
+        if ((options && options.clone) ||
+            !cp.ChartSection.matchesOptions(chart, options)) {
           continue;
         }
         // TODO scroll to the matching chart.
@@ -570,11 +534,11 @@ tr.exportTo('cp', () => {
         };
       }
 
-      const sectionId = action.sectionId || tr.b.GUID.allocateSimple();
+      const sectionId = tr.b.GUID.allocateSimple();
       const newSection = {
         type: cp.ChartSection.is,
         sectionId,
-        ...cp.ChartSection.buildState(action.options || {}),
+        ...cp.ChartSection.buildState(options || {}),
       };
       const chartSectionsById = {...state.chartSectionsById};
       chartSectionsById[sectionId] = newSection;
@@ -583,22 +547,22 @@ tr.exportTo('cp', () => {
       const chartSectionIds = Array.from(state.chartSectionIds);
       chartSectionIds.push(sectionId);
 
-      if (chartSectionIds.length === 1 && action.options) {
+      if (chartSectionIds.length === 1 && options) {
         const linkedChartState = cp.buildState(
-            cp.ChartPair.LinkedState, action.options);
+            cp.ChartPair.LinkedState, options);
         state = {...state, linkedChartState};
       }
       return {...state, chartSectionIds};
     },
 
-    closeAlerts: (state, action, rootState) => {
-      const sectionIdIndex = state.alertsSectionIds.indexOf(action.sectionId);
+    closeAlerts: (state, {sectionId}, rootState) => {
+      const sectionIdIndex = state.alertsSectionIds.indexOf(sectionId);
       const alertsSectionIds = [...state.alertsSectionIds];
       alertsSectionIds.splice(sectionIdIndex, 1);
       let closedAlertsIds;
       if (!cp.AlertsSection.isEmpty(
-          state.alertsSectionsById[action.sectionId])) {
-        closedAlertsIds = [action.sectionId];
+          state.alertsSectionsById[sectionId])) {
+        closedAlertsIds = [sectionId];
       }
       return {...state, alertsSectionIds, closedAlertsIds};
     },

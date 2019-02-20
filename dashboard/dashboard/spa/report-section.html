@@ -10,53 +10,21 @@ found in the LICENSE file.
 <link rel="import" href="/dashboard/spa/element-base.html">
 <link rel="import" href="/dashboard/spa/menu-input.html">
 <link rel="import" href="/dashboard/spa/raised-button.html">
+<link rel="import" href="/dashboard/spa/report-controls.html">
 <link rel="import" href="/dashboard/spa/report-names-request.html">
 <link rel="import" href="/dashboard/spa/report-request.html">
+<link rel="import" href="/dashboard/spa/report-table.html">
 <link rel="import" href="/dashboard/spa/report-template-request.html">
+<link rel="import" href="/dashboard/spa/report-template.html">
 <link rel="import" href="/dashboard/spa/request-base.html">
 <link rel="import" href="/dashboard/spa/scalar-span.html">
 <link rel="import" href="/dashboard/spa/team-filter.html">
-<link rel="import" href="/dashboard/spa/test-suites.html">
+<link rel="import" href="/dashboard/spa/test-suites-request.html">
 <link rel="import" href="/dashboard/spa/utils.html">
 
 <dom-module id="report-section">
   <template>
     <style>
-      #controls {
-        display: flex;
-        align-items: center;
-      }
-
-      #source {
-        width: 250px;
-      }
-
-      #prev_mstone,
-      #next_mstone {
-        font-size: larger;
-      }
-
-      #alerts {
-        color: var(--primary-color-dark);
-      }
-
-      #min_revision {
-        margin-right: 8px;
-      }
-
-      #min_revision,
-      #max_revision {
-        width: 84px;
-      }
-
-      #close {
-        align-self: flex-start;
-        cursor: pointer;
-        flex-shrink: 0;
-        height: var(--icon-size, 1em);
-        width: var(--icon-size, 1em);
-      }
-
       #tables {
         align-items: center;
         display: flex;
@@ -64,434 +32,34 @@ found in the LICENSE file.
         margin-top: 16px;
       }
 
-      .report {
-        margin: 8px;
-      }
-
-      .report_name {
-        display: flex;
-        justify-content: center;
-        margin: 24px 0 0 0;
-      }
-
-      table {
-        border-collapse: collapse;
-      }
-
-      table[placeholder] {
-        color: var(--neutral-color-dark);
-      }
-
-      h2 {
-        text-align: center;
-        margin: 0;
-      }
-
-      .name_column {
-        text-align: left;
-      }
-
-      td, th {
-        padding: 4px;
-        vertical-align: top;
-      }
-
-      .spacer {
-        flex-grow: 1;
-      }
-
-      #edit,
-      #copy,
-      #documentation {
-        color: var(--primary-color-dark);
-        cursor: pointer;
-        flex-shrink: 0;
-        margin: 0 0 0 8px;
-        padding: 0;
-        width: var(--icon-size, 1em);
-        height: var(--icon-size, 1em);
-      }
-
-      .report_name span {
-        position: relative;
-        display: flex;
-        align-items: center;
-      }
-
-      .edit_form {
-        display: flex;
-        flex-direction: column;
-      }
-
-      .edit_form table {
-        margin-top: 16px;
-      }
-
-      .edit_form_controls {
-        display: flex;
-        justify-content: space-evenly;
-      }
-
-      .edit_form_controls cp-input {
-        width: 250px;
-      }
-
-      .edit_form_controls menu-input:not(:last-child),
-      .edit_form_controls cp-input:not(:last-child) {
-        margin-right: 8px;
-      }
-
-      .template_cancel,
-      .template_save {
-        flex-grow: 1;
-      }
-
-      .template_row_button {
-        vertical-align: middle;
-      }
-
-      .template_row_button iron-icon {
-        cursor: pointer;
-        height: var(--icon-size, 1em);
-        width: var(--icon-size, 1em);
-      }
-
       #scratch {
         opacity: 0;
         position: absolute;
         z-index: var(--layer-hidden);
       }
-
-      #tooltip {
-        background-color: var(--background-color);
-        border: 2px solid var(--primary-color-dark);
-        padding: 8px;
-        position: absolute;
-        z-index: var(--layer-menu);
-      }
-
-      #tooltip td {
-        padding: 2px;
-      }
-
-      .error {
-        color: var(--error-color);
-      }
-
-      .menu_extra {
-        align-items: center;
-        border-right: 1px solid black;
-        display: flex;
-        flex-direction: column;
-        padding-right: 8px;
-      }
-
-      .tag_head {
-        padding: 4px;
-        color: var(--neutral-color-dark);
-        font-weight: bold;
-      }
     </style>
 
-    <div id="controls">
-      <menu-input
-          id="source"
-          state-path="[[statePath]].source"
-          on-option-select="onSelectSource_">
-      </menu-input>
-
-      <raised-button
-          id="alerts"
-          title="Alerts"
-          on-click="onAlerts_">
-        <iron-icon icon="cp:alert">
-        </iron-icon>
-        <span class="nav_button_label">
-          Alerts
-        </span>
-      </raised-button>
-
-      <span class="spacer">&nbsp;</span>
-
-      <template is="dom-if" if="[[isPreviousMilestone_(milestone)]]">
-        <raised-button
-            id="prev_mstone"
-            on-click="onPreviousMilestone_">
-          [[prevMstoneButtonLabel_(milestone, maxRevision)]]
-          <iron-icon icon="cp:left"></iron-icon>
-        </raised-button>
-      </template>
-
-      <cp-input
-          id="min_revision"
-          value="[[minRevisionInput]]"
-          label="Min Revision"
-          on-keyup="onMinRevisionKeyup_">
-      </cp-input>
-
-      <cp-input
-          id="max_revision"
-          value="[[maxRevisionInput]]"
-          label="Max Revision"
-          on-keyup="onMaxRevisionKeyup_">
-      </cp-input>
-
-      <template is="dom-if" if="[[isNextMilestone_(milestone)]]">
-        <raised-button
-            id="next_mstone"
-            on-click="onNextMilestone_">
-          <iron-icon icon="cp:right"></iron-icon>
-          M[[_add(milestone, 1)]]
-        </raised-button>
-      </template>
-
-      <span class="spacer">&nbsp;</span>
-
-      <iron-icon id="close" icon="cp:close" on-click="onCloseSection_">
-      </iron-icon>
-    </div>
+    <report-controls state-path="[[statePath]]">
+    </report-controls>
 
     <cp-loading loading$="[[isLoading]]"></cp-loading>
 
     <div id="tables">
       <template is="dom-repeat" items="[[tables]]" as="table" index-as="tableIndex">
+        <!-- TODO abs-pos the template over the table instead of iron-collapse-->
         <template is="dom-if" if="[[canEdit_(table, userEmail)]]">
           <iron-collapse horizontal opened="[[table.isEditing]]">
             <iron-collapse class="edit_form" opened="[[table.isEditing]]">
-              <div class="edit_form_controls">
-                <div>
-                  <cp-input
-                      class="report_name_input"
-                      error$="[[isEmpty_(table.name)]]"
-                      label="Report Name"
-                      value="[[table.name]]"
-                      on-keyup="onTemplateNameKeyUp_">
-                  </cp-input>
-                  <span class="error" hidden$="[[!isEmpty_(table.name)]]">
-                    required
-                  </span>
-                </div>
-
-                <div>
-                  <cp-input
-                      error$="[[isEmpty_(table.owners)]]"
-                      label="Owners"
-                      value="[[table.owners]]"
-                      on-keyup="onTemplateOwnersKeyUp_">
-                  </cp-input>
-                  <span class="error" hidden$="[[!isEmpty_(table.owners)]]">
-                      comma-separate list of complete email addresses
-                  </span>
-                </div>
-
-                <menu-input
-                    state-path="[[statePath]].tables.[[tableIndex]].statistic">
-                </menu-input>
-
-                <div>
-                  <cp-input
-                      label="Documentation"
-                      value="[[table.url]]"
-                      on-keyup="onTemplateUrlKeyUp_">
-                  </cp-input>
-                </div>
-              </div>
-
-              <table>
-                <tbody>
-                  <template is="dom-repeat" items="[[table.rows]]" as="row" index-as="rowIndex">
-                    <tr>
-                      <td>
-                        <cp-input
-                            label="Label"
-                            error$="[[isEmpty_(row.label)]]"
-                            value="[[row.label]]"
-                            on-keyup="onTemplateRowLabelKeyUp_">
-                        </cp-input>
-                        <span class="error" hidden$="[[!isEmpty_(row.label)]]">
-                          required
-                        </span>
-                      </td>
-                      <td>
-                        <menu-input
-                            state-path="[[statePath]].tables.[[tableIndex]].rows.[[rowIndex]].testSuite"
-                            on-option-select="onTestSuiteSelect_">
-                        </menu-input>
-                      </td>
-                      <td>
-                        <menu-input
-                            state-path="[[statePath]].tables.[[tableIndex]].rows.[[rowIndex]].measurement">
-                        </menu-input>
-                      </td>
-                      <td>
-                        <menu-input
-                            state-path="[[statePath]].tables.[[tableIndex]].rows.[[rowIndex]].bot">
-                        </menu-input>
-                      </td>
-                      <td>
-                        <menu-input
-                            state-path="[[statePath]].tables.[[tableIndex]].rows.[[rowIndex]].testCase">
-                          <!-- TODO share with chart-parameter -->
-                          <template is="dom-if" if="[[!isEmpty_(row.testCase.tags.options)]]">
-                            <div class="menu_extra" slot="menu_extra">
-                              <span class="tag_head">
-                                Tags
-                              </span>
-                              <option-group
-                                  state-path="[[statePath]].tables.[[tableIndex]].rows.[[rowIndex]].testCase.tags"
-                                  root-state-path="[[statePath]].tables.[[tableIndex]].rows.[[rowIndex]].testCase.tags"
-                                  on-option-select="onTagSelect_">
-                              </option-group>
-                            </div>
-                          </template>
-                        </menu-input>
-                      </td>
-                      <td class="template_row_button">
-                        <iron-icon
-                            icon="cp:add"
-                            on-click="onTemplateAddRow_">
-                        </iron-icon>
-                      </td>
-                      <td class="template_row_button">
-                        <template is="dom-if" if="[[!isLastRow_(table.rows)]]">
-                          <iron-icon
-                              icon="cp:remove"
-                              on-click="onTemplateRemoveRow_">
-                          </iron-icon>
-                        </template>
-                      </td>
-                    </tr>
-                  </template>
-                </tbody>
-              </table>
-
-              <div class="edit_form_controls">
-                <raised-button
-                    class="template_cancel"
-                    on-click="onToggleEditing_">
-                  <iron-icon icon="cp:cancel">
-                  </iron-icon>
-                  Cancel
-                </raised-button>
-                <raised-button
-                    class="template_save"
-                    disabled="[[!isValid_(table)]]"
-                    on-click="onTemplateSave_">
-                  <iron-icon icon="cp:save">
-                  </iron-icon>
-                  Save
-                </raised-button>
-              </div>
+              <report-template state-path="[[statePath]].tables.[[tableIndex]]">
+              </report-template>
             </iron-collapse>
           </iron-collapse>
         </template>
 
         <iron-collapse horizontal opened="[[!table.isEditing]]">
           <iron-collapse class="report" opened="[[!table.isEditing]]">
-            <div class="report_name">
-              <h2>[[table.name]]</h2>
-              <template is="dom-if" if="[[table.url]]">
-                <a id="documentation"
-                    href="[[table.url]]"
-                    target="_blank"
-                    title="Documentation">
-                  <iron-icon icon="cp:help">
-                  </iron-icon>
-                </a>
-              </template>
-
-              <iron-icon
-                  id="copy"
-                  icon="cp:copy"
-                  title="Copy measurements"
-                  on-click="onCopy_">
-              </iron-icon>
-
-              <template is="dom-if" if="[[canEdit_(table, userEmail)]]">
-                <iron-icon
-                    id="edit"
-                    icon="cp:edit"
-                    title="Edit template"
-                    on-click="onToggleEditing_">
-                </iron-icon>
-              </template>
-            </div>
-
-            <table placeholder$="[[table.isPlaceholder]]">
-              <thead>
-                <tr>
-                  <th colspan$="[[table.maxLabelParts]]">&nbsp;</th>
-                  <th colspan$="[[lengthOf_(table.statistics)]]">
-                    [[prevMstoneLabel_(milestone, maxRevision)]]
-                    <br>
-                    [[minRevision]]
-                  </th>
-                  <th colspan$="[[lengthOf_(table.statistics)]]">
-                    [[curMstoneLabel_(milestone, maxRevision)]]
-                    <br>
-                    [[maxRevision]]
-                  </th>
-                  <th colspan$="[[numChangeColumns_(table.statistics)]]">Change</th>
-                </tr>
-                <template is="dom-if" if="[[isMultiple_(table.statistics)]]">
-                  <tr>
-                    <th colspan$="[[table.maxLabelParts]]">&nbsp;</th>
-                    <template is="dom-repeat" items="[[table.statistics]]" as="statistic" index-as="statisticIndex">
-                      <th>[[statistic]]</th>
-                    </template>
-                    <template is="dom-repeat" items="[[table.statistics]]" as="statistic" index-as="statisticIndex">
-                      <th>[[statistic]]</th>
-                    </template>
-                    <template is="dom-repeat" items="[[table.statistics]]" as="statistic" index-as="statisticIndex">
-                      <th colspan="2">[[statistic]]</th>
-                    </template>
-                  </tr>
-                </template>
-              </thead>
-
-              <tbody>
-                <template is="dom-repeat" items="[[table.rows]]" as="row">
-                  <tr on-mouseover="onOverRow_" on-mouseout="onOutRow_">
-                    <template is="dom-repeat" items="[[row.labelParts]]" as="labelPart" index-as="labelPartIndex">
-                      <template is="dom-if" if="[[labelPart.isFirst]]">
-                        <td row-span="[[labelPart.rowCount]]">
-                          <a href="[[labelPart.href]]"
-                              on-click="onOpenChart_">
-                            [[labelPart.label]]
-                          </a>
-                        </td>
-                      </template>
-                    </template>
-
-                    <template is="dom-repeat" items="[[row.scalars]]" as="scalar" index-as="scalarIndex">
-                      <td>
-                        <scalar-span
-                            unit="[[scalar.unit]]"
-                            unit-prefix="[[scalar.unitPrefix]]"
-                            value="[[scalar.value]]">
-                        </scalar-span>
-                      </td>
-                    </template>
-                  </tr>
-                </template>
-              </tbody>
-            </table>
-
-            <div id="tooltip"
-                hidden$="[[!tooltip.rows]]"
-                style$="top: [[tooltip.top]]px; left: [[tooltip.left]]px;">
-              <table>
-                <tbody>
-                  <template is="dom-repeat" items="[[tooltip.rows]]" as="row" index-as="rowIndex">
-                    <tr>
-                      <template is="dom-repeat" items="[[row]]" as="cell" index-as="cellIndex">
-                        [[cell]]
-                      </template>
-                    </tr>
-                  </template>
-                </tbody>
-              </table>
-            </div>
+            <report-table state-path="[[statePath]].tables.[[tableIndex]]">
+            </report-table>
           </iron-collapse>
         </iron-collapse>
       </template>

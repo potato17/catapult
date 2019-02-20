@@ -7,6 +7,10 @@
   class CpCheckbox extends Polymer.Element {
     static get is() { return 'cp-checkbox'; }
 
+    click() {
+      this.$.native.dispatchEvent(new CustomEvent('change'));
+    }
+
     onChange_(event) {
       this.dispatchEvent(new CustomEvent('change', {
         bubbles: true,

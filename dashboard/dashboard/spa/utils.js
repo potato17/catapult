@@ -116,16 +116,17 @@ tr.exportTo('cp', () => {
     return hex;
   }
 
+  const DOCUMENT_READY = (async() => {
+    while (document.readyState !== 'complete') {
+      await animationFrame();
+    }
+  })();
+
   /*
    * Returns the bounding rect of the given element.
    */
   async function measureElement(element) {
-    if (!measureElement.READY) {
-      measureElement.READY = cp.animationFrame().then(() => {
-        measureElement.READY = undefined;
-      });
-    }
-    await measureElement.READY;
+    await DOCUMENT_READY;
     return element.getBoundingClientRect();
   }
 
@@ -165,7 +166,7 @@ tr.exportTo('cp', () => {
     Object.assign(span.style, opt_options);
     MEASURE_TEXT_HOST.appendChild(span);
 
-    const promise = cp.measureElement(span).then(({width, height}) => {
+    const promise = measureElement(span).then(({width, height}) => {
       return {width, height};
     });
     while (MEASURE_TEXT_CACHE.size > MAX_MEASURE_TEXT_CACHE_SIZE) {
@@ -292,6 +293,18 @@ tr.exportTo('cp', () => {
     return state;
   }
 
+  function normalize(columns, cells) {
+    const dict = {};
+    for (let i = 0; i < columns.length; ++i) {
+      dict[columns[i]] = cells[i];
+    }
+    return dict;
+  }
+
+  async function* asGenerator(promise) {
+    yield await promise;
+  }
+
   /**
    * BatchIterator reduces processing costs by batching results and errors
    * from an array of tasks. A task can either be a promise or an asynchronous
@@ -305,89 +318,119 @@ tr.exportTo('cp', () => {
    *   }
    */
   class BatchIterator {
-    /**
-     * type tasks = [task]
-     * type task = Promise | AsyncIterator
-     * type AsyncIterator = {
-     *   next: () => Promise
-     * }
-     */
-    constructor(tasks) {
+    constructor(tasks, getDelay = cp.timeout) {
+      // `tasks` may include either simple Promises or async generators.
       this.results_ = [];
       this.errors_ = [];
-      this.timeSinceLastCalled_ = undefined;
-      this.promises_ = [];
+      this.promises_ = new Set();
 
-      for (const task of tasks) {
-        if (task instanceof Promise) {
-          this.promises_.push(this.wrapPromise_(task));
-        } else {
-          this.wrapIterator_(task);
-        }
-      }
-    }
+      for (const task of tasks) this.add(task);
 
-    wrapPromise_(promise, isAsyncIter = false) {
-      const self = (async() => {
-        try {
-          let result = await promise;
-          if (isAsyncIter) {
-            if (result.done) return;
-            result = result.value;
-          }
-          this.results_.push(result);
-        } catch (err) {
-          this.errors_.push(err);
-        } finally {
-          this.promises_.splice(this.promises_.indexOf(self), 1);
-        }
-      })();
-      return self;
-    }
-
-    async wrapIterator_(asyncIter) {
-      while (true) {
-        const promise = asyncIter.next();
-        this.promises_.push(this.wrapPromise_(promise, true));
-        const {done} = await promise;
-        if (done) break;
-      }
-    }
-
-    [Symbol.asyncIterator]() {
-      return this;
-    }
-
-    async next() {
-      if (this.promises_.length === 0 && this.results_.length === 0 &&
-          this.errors_.length === 0) {
-        return {done: true};
-      }
-
-      await Promise.race(this.promises_);
-
-      if (this.timeSinceLastCalled_) {
-        const timeToProcess = performance.now() - this.timeSinceLastCalled_;
-        await Promise.race([
-          await timeout(timeToProcess),
-          await Promise.all(this.promises_)
-        ]);
-      }
-
-      const results = this.results_;
-      const errors = this.errors_;
-      this.results_ = [];
-      this.errors_ = [];
-
-      // Measure how long it takes the caller to process yielded results to
-      // avoid overloading the caller the next time around.
-      this.timeSinceLastCalled_ = performance.now();
-
-      return {
-        done: false,
-        value: {results, errors}
+      this.getDelay_ = ms => {
+        const promise = getDelay(ms).then(() => {
+          promise.resolved = true;
+        });
+        return promise;
       };
     }
+
+    add(task) {
+      if (task instanceof Promise) task = asGenerator(task);
+      this.generate_(task);
+    }
+
+    // Adds a Promise to this.promises_ that resolves when the generator next
+    // resolves, and deletes itself from this.promises_.
+    // If the generator is not done, the result is pushed to this.results_ or
+    // the error is pushed to this.errors_, and another Promise is added to
+    // this.promises_.
+    generate_(generator) {
+      const wrapped = (async() => {
+        try {
+          const {value, done} = await generator.next();
+          if (done) return;
+          this.results_.push(value);
+          this.generate_(generator);
+        } catch (error) {
+          this.errors_.push(error);
+        } finally {
+          this.promises_.delete(wrapped);
+        }
+      })();
+      this.promises_.add(wrapped);
+    }
+
+    batch_() {
+      const batch = {results: this.results_, errors: this.errors_};
+      this.results_ = [];
+      this.errors_ = [];
+      return batch;
+    }
+
+    async* [Symbol.asyncIterator]() {
+      if (!this.promises_.size) return;
+
+      // Yield the first result immediately in order to allow the user to start
+      // to understand it (c.f. First Contentful Paint), and also to measure how
+      // long it takes the caller to render the data. Use that measurement as an
+      // estimation of how long to wait before yielding the next batch of
+      // results. This first batch may contain multiple results/errors if
+      // multiple tasks resolve in the same tick, or if a generator yields
+      // multiple results synchronously.
+      await Promise.race(this.promises_);
+      let start = performance.now();
+      yield this.batch_();
+      let processingMs = performance.now() - start;
+
+      while (this.promises_.size ||
+             this.results_.length || this.errors_.length) {
+        // Wait for a result or error to become available.
+        // This may not be necessary if a promise resolved while the caller was
+        // processing previous results.
+        if (!this.results_.length && !this.errors_.length) {
+          await Promise.race(this.promises_);
+        }
+
+        // Wait for either the delay to resolve or all generators to be done.
+        // This can't use Promise.all() because generators can add new promises.
+        const delay = this.getDelay_(processingMs);
+        while (!delay.resolved && this.promises_.size) {
+          await Promise.race([delay, ...this.promises_]);
+        }
+
+        start = performance.now();
+        yield this.batch_();
+        processingMs = performance.now() - start;
+      }
+    }
+  }
+
+  const ZERO_WIDTH_SPACE = String.fromCharCode(0x200b);
+  const NON_BREAKING_SPACE = String.fromCharCode(0xA0);
+
+  function breakWords(str) {
+    if (!str) return NON_BREAKING_SPACE;
+
+    // Insert spaces before underscores.
+    str = str.replace(/_/g, ZERO_WIDTH_SPACE + '_');
+
+    // Insert spaces after colons and dots.
+    str = str.replace(/\./g, '.' + ZERO_WIDTH_SPACE);
+    str = str.replace(/:/g, ':' + ZERO_WIDTH_SPACE);
+
+    // Insert spaces before camel-case words.
+    str = str.split(/([a-z][A-Z])/g);
+    str = str.map((s, i) => {
+      if ((i % 2) === 0) return s;
+      return s[0] + ZERO_WIDTH_SPACE + s[1];
+    });
+    str = str.join('');
+    return str;
+  }
+
+  function plural(count, pluralSuffix = 's', singularSuffix = '') {
+    if (count === 1) return singularSuffix;
+    return pluralSuffix;
   }
 
   function timeEventListeners(cls) {
@@ -544,22 +587,18 @@ tr.exportTo('cp', () => {
     return colors;
   }
 
-  function normalize(columns, cells) {
-    const dict = {};
-    for (let i = 0; i < columns.length; ++i) {
-      dict[columns[i]] = cells[i];
-    }
-    return dict;
-  }
-
   function denormalize(objects, columnNames) {
     return objects.map(obj => columnNames.map(col => obj[col]));
   }
 
   return {
+    BatchIterator,
+    DOCUMENT_READY,
+    NON_BREAKING_SPACE,
+    ZERO_WIDTH_SPACE,
     afterRender,
     animationFrame,
-    BatchIterator,
+    breakWords,
     buildProperties,
     buildState,
     deepFreeze,
@@ -574,6 +613,7 @@ tr.exportTo('cp', () => {
     measureText,
     measureTrace,
     normalize,
+    plural,
     setImmutable,
     sha,
     timeActions,

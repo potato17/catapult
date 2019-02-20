@@ -71,13 +71,15 @@ tr.exportTo('cp', () => {
 
   TriageNew.State = {
     cc: options => options.cc || '',
-    components: options => TriageNew.collectComponents(options.alerts),
+    components: options => TriageNew.collectAlertProperties(
+        options.alerts, 'bugComponents'),
     description: options => '',
     isOpen: {
       value: options => options.isOpen || false,
       reflectToAttribute: true,
     },
-    labels: options => TriageNew.collectLabels(options.alerts),
+    labels: options => TriageNew.collectAlertProperties(
+        options.alerts, 'bugLabels'),
     owner: options => '',
     summary: options => TriageNew.summarize(options.alerts),
   };
@@ -185,47 +187,26 @@ tr.exportTo('cp', () => {
     );
   };
 
-  TriageNew.collectLabels = alerts => {
+  TriageNew.collectAlertProperties = (alerts, property) => {
     if (!alerts) return [];
     let labels = new Set();
-    labels.add('Pri-2');
-    labels.add('Type-Bug-Regression');
+    if (property === 'bugLabels') {
+      labels.add('Pri-2');
+      labels.add('Type-Bug-Regression');
+    }
     for (const alert of alerts) {
-      for (const label of alert.bugLabels) {
+      for (const label of alert[property]) {
         labels.add(label);
       }
     }
     labels = Array.from(labels);
     labels.sort((x, y) => x.localeCompare(y));
     return labels.map(name => {
-      return {
-        isEnabled: true,
-        name,
-      };
-    });
-  };
-
-  TriageNew.collectComponents = alerts => {
-    if (!alerts) return [];
-    let components = new Set();
-    for (const alert of alerts) {
-      for (const component of alert.bugComponents) {
-        components.add(component);
-      }
-    }
-    components = Array.from(components);
-    components.sort((x, y) => x.localeCompare(y));
-    return components.map(name => {
-      return {
-        isEnabled: true,
-        name,
-      };
+      return {name, isEnabled: true};
     });
   };
 
   cp.ElementBase.register(TriageNew);
 
-  return {
-    TriageNew,
-  };
+  return {TriageNew};
 });

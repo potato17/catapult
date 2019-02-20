@@ -32,7 +32,12 @@ tr.exportTo('d', function() {
       return false;
     }
     if (groupBugs && (a.bug_id !== b.bug_id)) return false;
-    if (!a.relatedNames && !b.relatedNames) return a.descriptor.testSuite === b.descriptor.testSuite;
+    if (!a.relatedNames && !b.relatedNames) {
+      if (a.descriptor && b.descriptor) {
+        return a.descriptor.testSuite === b.descriptor.testSuite;
+      }
+      return a.testsuite === b.testsuite;
+    }
     return isRelated(a, b);
   }
 
@@ -72,7 +77,8 @@ tr.exportTo('d', function() {
   function groupAlerts(alerts, groupBugs) {
     const groups = [];
     for (const alert of alerts) {
-      alert.measurementName = alert.test.split('/')[0];
+      alert.measurementName = alert.descriptor ? alert.descriptor.measurement :
+        alert.test.split('/')[0];
       if (d.MEMORY_PROCESS_RELATED_NAMES.has(alert.measurementName)) {
         alert.relatedNames = d.MEMORY_PROCESS_RELATED_NAMES.get(
             alert.measurementName);

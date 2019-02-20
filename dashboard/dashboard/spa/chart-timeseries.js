@@ -4,136 +4,20 @@
 */
 'use strict';
 tr.exportTo('cp', () => {
-  // TODO compute this based on how multiple timeseries x coordinates line up
-  const MAX_POINTS = 500;
-
-  function mergeData(target, source) {
-    if (target.revision === undefined) {
-      Object.assign(target, source);
-      if (target.diagnostics) {
-        const shallowClone = new tr.v.d.DiagnosticMap();
-        shallowClone.addDiagnostics(target.diagnostics);
-        target.diagnostics = shallowClone;
-      }
-      return;
-    }
-
-    if (source.diagnostics) {
-      if (!target.diagnostics) {
-        target.diagnostics = new tr.v.d.DiagnosticMap();
-      }
-      target.diagnostics.addDiagnostics(source.diagnostics);
-    }
-
-    target.revision = Math.min(target.revision, source.revision);
-    if (source.timestamp < target.timestamp) {
-      target.timestamp = source.timestamp;
-    }
-
-    const deltaMean = target.avg - source.avg;
-    target.avg = (
-      (target.avg * target.count) + (source.avg * source.count)) /
-      (target.count + source.count);
-    const thisVar = target.std * target.std;
-    const otherVar = source.std * source.std;
-    const thisCount = target.count;
-    target.count += source.count;
-    target.std = Math.sqrt(thisVar + otherVar + (
-      thisCount * source.count * deltaMean * deltaMean /
-      target.count));
-    if (target.sum === undefined) target.sum = 0;
-    if (source.sum) target.sum += source.sum;
-  }
-
-  class TimeseriesIterator {
-    constructor(lineDescriptor, timeseries, range) {
-      this.minRevision_ = range.minRevision;
-      this.maxRevision_ = range.maxRevision;
-      this.lineDescriptor_ = lineDescriptor;
-      this.timeseries_ = timeseries;
-      this.index_ = this.findStartIndex_();
-      // The index of the last datum that will be yielded:
-      this.endIndex_ = Math.min(
-          this.findEndIndex_(), this.timeseries_.length - 1);
-      this.indexDelta_ = Math.max(
-          1, (this.endIndex_ - this.index_) / MAX_POINTS);
-    }
-
-    findStartIndex_() {
-      if (this.minRevision_) {
-        return tr.b.findLowIndexInSortedArray(
-            this.timeseries_, ChartTimeseries.getX,
-            this.minRevision_);
-      }
-      return 0;
-    }
-
-    findEndIndex_() {
-      if (this.maxRevision_) {
-        return tr.b.findLowIndexInSortedArray(
-            this.timeseries_, ChartTimeseries.getX,
-            this.maxRevision_);
-      }
-      return this.timeseries_.length - 1;
-    }
-
-    get current() {
-      return this.timeseries_[Math.min(this.roundIndex_, this.endIndex_)];
-    }
-
-    get roundIndex_() {
-      return Math.round(this.index_);
-    }
-
-    get done() {
-      return !this.current || (this.roundIndex_ > this.endIndex_);
-    }
-
-    next() {
-      this.index_ += this.indexDelta_;
-    }
-  }
-
-  class MultiTimeseriesIterator {
-    constructor(lineDescriptor, timeserieses, range) {
-      this.iterators_ = timeserieses.map(timeseries => new TimeseriesIterator(
-          lineDescriptor, timeseries, range));
-    }
-
-    get allDone_() {
-      for (const iterator of this.iterators_) {
-        if (!iterator.done) return false;
-      }
-      return true;
-    }
-
-    * [Symbol.iterator]() {
-      while (!this.allDone_) {
-        const merged = {};
-        let minX = Infinity;
-        for (const iterator of this.iterators_) {
-          if (!iterator.current) continue;
-          mergeData(merged, iterator.current);
-          if (!iterator.done) {
-            minX = Math.min(minX, ChartTimeseries.getX(iterator.current));
-          }
-        }
-        yield [minX, merged];
-
-        // Increment all iterators whose X coordinate is minX.
-        for (const iterator of this.iterators_) {
-          if (!iterator.done &&
-              ChartTimeseries.getX(iterator.current) === minX) {
-            iterator.next();
-          }
-        }
-      }
-    }
-  }
+  const MAX_LINES = 10;
 
   class ChartTimeseries extends cp.ElementBase {
     showPlaceholder(isLoading, lines) {
       return !isLoading && this.isEmpty_(lines);
+    }
+
+    async onGetTooltip_(event) {
+      this.dispatch('getTooltip', this.statePath,
+          event.detail.nearestLine,
+          this.lines.indexOf(event.detail.nearestLine),
+          event.detail.nearestPoint);
+      await event.detail.mouseLeave;
+      this.dispatch('hideTooltip', this.statePath);
     }
 
     observeLineDescriptors_() {
@@ -143,15 +27,6 @@ tr.exportTo('cp', () => {
       this.debounce('load', () => {
         this.dispatch('load', this.statePath);
       }, Polymer.Async.microTask);
-    }
-
-    onDotMouseOver_(event) {
-      this.dispatch('dotMouseOver_', this.statePath,
-          event.detail.line, event.detail.datum);
-    }
-
-    onDotMouseOut_(event) {
-      this.dispatch('dotMouseOut_', this.statePath);
     }
 
     observeLines_(newLines, oldLines) {
@@ -208,9 +83,9 @@ tr.exportTo('cp', () => {
 
   ChartTimeseries.lineDescriptorEqual = (a, b) => {
     if (a === b) return true;
-    if (!arraySetEqual(a.testSuites, b.testSuites)) return false;
+    if (!arraySetEqual(a.suites, b.suites)) return false;
     if (!arraySetEqual(a.bots, b.bots)) return false;
-    if (!arraySetEqual(a.testCases, b.testCases)) return false;
+    if (!arraySetEqual(a.cases, b.cases)) return false;
     if (a.measurement !== b.measurement) return false;
     if (a.statistic !== b.statistic) return false;
     if (a.buildType !== b.buildType) return false;
@@ -250,8 +125,7 @@ tr.exportTo('cp', () => {
 
       dispatch(Redux.UPDATE(statePath, {isLoading: true, lines: []}));
 
-      await ChartTimeseries.loadLines(statePath, state.lineDescriptors)(
-          dispatch, getState);
+      await ChartTimeseries.loadLines(statePath)(dispatch, getState);
 
       state = Polymer.Path.get(getState(), statePath);
       if (!state) {
@@ -262,87 +136,33 @@ tr.exportTo('cp', () => {
       dispatch(Redux.UPDATE(statePath, {isLoading: false}));
     },
 
-    dotMouseOver_: (statePath, line, datum) => async(dispatch, getState) => {
-      dispatch({
-        type: ChartTimeseries.reducers.mouseYTicks.name,
-        statePath,
-        line,
-      });
+    getTooltip: (statePath, line, lineIndex, datum) =>
+      async(dispatch, getState) => {
+        dispatch(Redux.CHAIN(
+            {
+              type: ChartTimeseries.reducers.getTooltip.name,
+              statePath,
+              line,
+              datum,
+            },
+            {
+              type: ChartTimeseries.reducers.mouseYTicks.name,
+              statePath,
+              line,
+            },
+        ));
+        cp.ChartBase.actions.boldLine(statePath, lineIndex)(dispatch, getState);
+      },
 
-      const rows = [];
-
-      if (datum.icon === 'cp:clock') {
-        const days = Math.floor(tr.b.convertUnit(
-            new Date() - datum.datum.timestamp,
-            tr.b.UnitScale.TIME.MILLI_SEC, tr.b.UnitScale.TIME.DAY));
-        rows.push({
-          colspan: 2, color: datum.iconColor,
-          name: `No data uploaded in ${days} day${days === 1 ? '' : 's'}`,
-        });
-      }
-
-      if (datum.datum.alert) {
-        if (datum.datum.alert.bugId) {
-          rows.push({name: 'bug', value: datum.datum.alert.bugId});
-        }
-        const deltaScalar = datum.datum.alert.deltaUnit.format(
-            datum.datum.alert.deltaValue);
-        const percentDeltaScalar = datum.datum.alert.percentDeltaUnit.format(
-            datum.datum.alert.percentDeltaValue);
-        rows.push({
-          name: datum.datum.alert.improvement ? 'improvement' : 'regression',
-          color: datum.iconColor,
-          value: deltaScalar + ' ' + percentDeltaScalar,
-        });
-      }
-
-      rows.push({name: 'value', value: line.unit.format(datum.y)});
-
-      rows.push({name: 'revision', value: datum.datum.revision});
-      for (const [name, value] of Object.entries(datum.datum.revisions || {})) {
-        rows.push({name, value});
-      }
-
-      rows.push({
-        name: 'uploaded',
-        value: datum.datum.timestamp.toString(),
-      });
-
-      rows.push({name: 'build type', value: line.descriptor.buildType});
-
-      if (line.descriptor.testSuites.length === 1) {
-        rows.push({
-          name: 'test suite',
-          value: line.descriptor.testSuites[0],
-        });
-      }
-
-      rows.push({name: 'measurement', value: line.descriptor.measurement});
-
-      if (line.descriptor.bots.length === 1) {
-        rows.push({name: 'bot', value: line.descriptor.bots[0]});
-      }
-
-      if (line.descriptor.testCases.length === 1) {
-        rows.push({
-          name: 'test case',
-          value: line.descriptor.testCases[0],
-        });
-      }
-
-      if (datum.datum.diagnostics) {
-        const value = [...datum.datum.diagnostics.keys()].join(', ');
-        rows.push({name: 'changed', value, color: 'var(--primary-color-dark)'});
-      }
-
-      cp.ChartBase.actions.tooltip(statePath, rows)(dispatch, getState);
-    },
-
-    dotMouseOut_: statePath => async(dispatch, getState) => {
-      dispatch({
-        type: ChartTimeseries.reducers.mouseYTicks.name,
-        statePath,
-      });
+    hideTooltip: statePath => async(dispatch, getState) => {
+      dispatch(Redux.CHAIN(
+          Redux.UPDATE(statePath, {tooltip: null}),
+          {
+            type: ChartTimeseries.reducers.mouseYTicks.name,
+            statePath,
+          },
+      ));
+      cp.ChartBase.actions.unboldLines(statePath)(dispatch, getState);
     },
 
     measureYTicks: statePath => async(dispatch, getState) => {
@@ -367,7 +187,6 @@ tr.exportTo('cp', () => {
       const width = tr.b.math.Statistics.max(rects, rect => rect.width);
       dispatch(Redux.UPDATE(statePath + '.yAxis', {width}));
     },
-
   };
 
   const SHADE_FILL_ALPHA = 0.2;
@@ -456,29 +275,122 @@ tr.exportTo('cp', () => {
       }
 
       ChartTimeseries.assignColors(state.lines);
-      state = cp.ChartBase.layoutLinesInPlace(state);
+      state = cp.layoutTimeseries(state);
       state = ChartTimeseries.brushRevisions(state);
       return state;
     },
 
-    mouseYTicks: (state, action, rootState) => {
+    mouseYTicks: (state, {line}, rootState) => {
       if (!state.yAxis.generateTicks) return state;
       if (!((state.mode === 'normalizeLine') || (state.mode === 'center')) &&
           (state.yAxis.ticksForUnitName.size === 1)) {
         return state;
       }
       let ticks = [];
-      if (action.line) {
+      if (line) {
         if (state.mode === 'normalizeLine' || state.mode === 'center') {
-          ticks = action.line.ticks;
+          ticks = line.ticks;
         } else {
           ticks = state.yAxis.ticksForUnitName.get(
-              action.line.unit.unitName);
+              line.unit.baseUnit.unitName);
         }
       }
       return {...state, yAxis: {...state.yAxis, ticks}};
     },
 
+    getTooltip: (state, {line, datum}, rootState) => {
+      if (!line || !datum) {
+        return {...state, tooltip: null};
+      }
+
+      const rows = [];
+
+      if (datum.icon === 'cp:clock') {
+        const days = Math.floor(tr.b.convertUnit(
+            new Date() - datum.datum.timestamp,
+            tr.b.UnitScale.TIME.MILLI_SEC, tr.b.UnitScale.TIME.DAY));
+        rows.push({
+          colspan: 2, color: datum.iconColor,
+          name: `No data uploaded in ${days} day${days === 1 ? '' : 's'}`,
+        });
+      }
+
+      if (datum.datum.alert) {
+        if (datum.datum.alert.bugId) {
+          rows.push({name: 'bug', value: datum.datum.alert.bugId});
+        }
+        const deltaScalar = datum.datum.alert.deltaUnit.format(
+            datum.datum.alert.deltaValue);
+        const percentDeltaScalar = datum.datum.alert.percentDeltaUnit.format(
+            datum.datum.alert.percentDeltaValue);
+        rows.push({
+          name: datum.datum.alert.improvement ? 'improvement' : 'regression',
+          color: datum.iconColor,
+          value: deltaScalar + ' ' + percentDeltaScalar,
+        });
+      }
+
+      rows.push({name: 'value', value: line.unit.format(datum.y)});
+
+      rows.push({name: 'revision', value: datum.datum.revision});
+      for (const [name, value] of Object.entries(datum.datum.revisions || {})) {
+        rows.push({name, value});
+      }
+
+      rows.push({
+        name: 'uploaded',
+        value: datum.datum.timestamp.toString(),
+      });
+
+      rows.push({name: 'build type', value: line.descriptor.buildType});
+
+      if (line.descriptor.suites.length === 1) {
+        rows.push({
+          name: 'test suite',
+          value: line.descriptor.suites[0],
+        });
+      }
+
+      rows.push({name: 'measurement', value: line.descriptor.measurement});
+
+      if (line.descriptor.bots.length === 1) {
+        rows.push({name: 'bot', value: line.descriptor.bots[0]});
+      }
+
+      if (line.descriptor.cases.length === 1) {
+        rows.push({
+          name: 'test case',
+          value: line.descriptor.cases[0],
+        });
+      }
+
+      if (datum.datum.diagnostics) {
+        const value = [...datum.datum.diagnostics.keys()].join(', ');
+        rows.push({name: 'changed', value, color: 'var(--primary-color-dark)'});
+      }
+
+      /*
+      TODO
+      rows.push({colspan: 2, name: 'Click for options and more data'});
+      */
+
+      state = {
+        ...state,
+        tooltip: {
+          color: line.color,
+          isVisible: true,
+          rows,
+          top: '100%',
+        },
+      };
+      if (datum.xPct < 50) {
+        state.tooltip.left = datum.xPct + '%';
+      } else {
+        state.tooltip.right = (100 - datum.xPct) + '%';
+      }
+
+      return state;
+    },
   };
 
   // Snap to nearest existing revision
@@ -493,7 +405,7 @@ tr.exportTo('cp', () => {
           closestDatum = datum;
         }
       }
-      return {...closestDatum, x};
+      return {x, xPct: closestDatum.xPct + '%'};
     });
     return {...state, xAxis: {...state.xAxis, brushes}};
   };
@@ -511,25 +423,23 @@ tr.exportTo('cp', () => {
 
   // Strip out min/maxRevision/Timestamp and ensure a consistent key order.
   ChartTimeseries.stringifyDescriptor = lineDescriptor => JSON.stringify([
-    lineDescriptor.testSuites,
+    lineDescriptor.suites,
     lineDescriptor.measurement,
     lineDescriptor.bots,
-    lineDescriptor.testCases,
+    lineDescriptor.cases,
     lineDescriptor.statistic,
     lineDescriptor.buildType,
   ]);
 
-  ChartTimeseries.loadLines = (statePath, lineDescriptors) => async(
-    dispatch,
-    getState
-  ) => {
+  ChartTimeseries.loadLines = statePath => async(dispatch, getState) => {
     const state = Polymer.Path.get(getState(), statePath);
     const revisionOptions = {
       minRevision: state.minRevision,
       maxRevision: state.maxRevision,
     };
     const readers = [];
-    for (const lineDescriptor of lineDescriptors) {
+    const lineDescriptors = state.lineDescriptors.slice(0, MAX_LINES);
+    for (const lineDescriptor of state.lineDescriptors) {
       const fetchDescriptors = ChartTimeseries.createFetchDescriptors(
           lineDescriptor, state.levelOfDetail);
       for (const fetchDescriptor of fetchDescriptors) {
@@ -542,6 +452,7 @@ tr.exportTo('cp', () => {
         })());
       }
     }
+    if (!readers.length) return;
 
     for await (const {results, errors} of new cp.BatchIterator(readers)) {
       const state = Polymer.Path.get(getState(), statePath);
@@ -590,22 +501,22 @@ tr.exportTo('cp', () => {
   }
 
   ChartTimeseries.createFetchDescriptors = (lineDescriptor, levelOfDetail) => {
-    let testCases = lineDescriptor.testCases;
-    if (testCases.length === 0) testCases = [undefined];
+    let cases = lineDescriptor.cases;
+    if (cases.length === 0) cases = [undefined];
     const fetchDescriptors = [];
-    for (const testSuite of lineDescriptor.testSuites) {
+    for (const suite of lineDescriptor.suites) {
       for (const bot of lineDescriptor.bots) {
-        for (const testCase of testCases) {
+        for (const cas of cases) {
           fetchDescriptors.push({
-            testSuite,
+            suite,
             bot,
             measurement: lineDescriptor.measurement,
-            testCase,
+            case: cas,
             statistic: lineDescriptor.statistic,
             buildType: lineDescriptor.buildType,
             levelOfDetail,
           });
-          // TODO if levelOfDetail === ANNOTATIONS and testCase === undefined,
+          // TODO if levelOfDetail === ANNOTATIONS and case === undefined,
           // then add ANNOTATIONS_ONLY fetchDescriptors for all test cases in
           // this test suite in order to bubble alerts up to summary time
           // series.
@@ -626,9 +537,6 @@ tr.exportTo('cp', () => {
           'var(--neutral-color-dark)' : 'var(--error-color)',
       };
     }
-    if (datum.diagnostics) {
-      return {icon: 'cp:book', iconColor: 'var(--primary-color-dark)'};
-    }
     // The stale data icon cp:clock is set by ChartPair.reducers.updateStale.
     return {};
   }
@@ -636,23 +544,12 @@ tr.exportTo('cp', () => {
   ChartTimeseries.aggregateTimeserieses = (
       lineDescriptor, timeserieses, levelOfDetail, range) => {
     const lineData = [];
-    const iter = new MultiTimeseriesIterator(
-        lineDescriptor, timeserieses, range);
-    let books = 0;
+    const iter = new cp.TimeseriesMerger(lineDescriptor, timeserieses, range);
     for (const [x, datum] of iter) {
       const lineDatum = {datum, x, y: datum[lineDescriptor.statistic]};
       lineData.push(lineDatum);
       if (levelOfDetail !== cp.LEVEL_OF_DETAIL.XY) {
         Object.assign(lineDatum, getIcon(datum));
-      }
-      if (lineDatum.icon === 'cp:book') ++books;
-    }
-
-    if (books > (lineData.length / 2)) {
-      // Some timeseries have diagnostics on most points. Displaying book icons
-      // on most points is slow and not helpful, so hide them.
-      for (const lineDatum of lineData) {
-        if (lineDatum.icon === 'cp:book') lineDatum.icon = undefined;
       }
     }
 
@@ -660,12 +557,7 @@ tr.exportTo('cp', () => {
     return lineData;
   };
 
-  ChartTimeseries.getX = datum => datum.revision;
-
   cp.ElementBase.register(ChartTimeseries);
 
-  return {
-    ChartTimeseries,
-    MultiTimeseriesIterator,
-  };
+  return {ChartTimeseries};
 });

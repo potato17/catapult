@@ -21,9 +21,9 @@ tr.exportTo('cp', () => {
       }))).filter(x => x);
     }
 
-    async testSuites(allTestSuites) {
-      return (await Promise.all(allTestSuites.map(async testSuite => {
-        if (await this.testSuiteMatches_(testSuite)) return testSuite;
+    async suites(allTestSuites) {
+      return (await Promise.all(allTestSuites.map(async suite => {
+        if (await this.suiteMatches_(suite)) return suite;
         return undefined;
       }))).filter(x => x);
     }
@@ -36,8 +36,8 @@ tr.exportTo('cp', () => {
       throw new Error('subclasses must override sheriffNameMatches_');
     }
 
-    async testSuiteMatches_(testSuite) {
-      throw new Error('subclasses must override testSuiteMatches_');
+    async suiteMatches_(suite) {
+      throw new Error('subclasses must override suiteMatches_');
     }
   }
 
@@ -50,7 +50,7 @@ tr.exportTo('cp', () => {
       return true;
     }
 
-    async testSuiteMatches_(testSuite) {
+    async suiteMatches_(suite) {
       return true;
     }
   }
@@ -68,7 +68,7 @@ tr.exportTo('cp', () => {
       super();
       this.reportNameHashes_ = new Set([]);
       this.sheriffNameHashes_ = new Set([]);
-      this.testSuiteHashes_ = new Set([]);
+      this.suiteHashes_ = new Set([]);
     }
 
     async reportNameMatches_(reportName) {
@@ -76,11 +76,11 @@ tr.exportTo('cp', () => {
     }
 
     async sheriffNameMatches_(sheriffName) {
-      return this.sheriffNameHashes_.has(await cp.sha(testSuite));
+      return this.sheriffNameHashes_.has(await cp.sha(suite));
     }
 
-    async testSuiteMatches_(testSuite) {
-      return this.testSuiteHashes_.has(await cp.sha(testSuite));
+    async suiteMatches_(suite) {
+      return this.suiteHashes_.has(await cp.sha(suite));
     }
   }
 
@@ -89,7 +89,7 @@ tr.exportTo('cp', () => {
         constructor() {
           super();
           /* eslint-disable max-len */
-          this.testSuiteHashes_.add('ced35239215489f5e01a5c68981d1b6f32f2d0260a0785022d73622ccfc83fd0');
+          this.suiteHashes_.add('ced35239215489f5e01a5c68981d1b6f32f2d0260a0785022d73622ccfc83fd0');
           /* eslint-enable max-len */
         }
 

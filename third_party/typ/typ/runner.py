@@ -505,10 +505,10 @@ class Runner(object):
 
         self._run_one_set(self.stats, result_set, test_set)
 
-        failed_tests = sorted(json_results.failed_test_names(result_set))
+        regressions = sorted(json_results.regressions(result_set))
         retry_limit = self.args.retry_limit
 
-        while retry_limit and failed_tests:
+        while retry_limit and regressions:
             if retry_limit == self.args.retry_limit:
                 self.flush()
                 self.args.overwrite = False
@@ -522,12 +522,12 @@ class Runner(object):
             self.print_('')
 
             stats = Stats(self.args.status_format, h.time, 1)
-            stats.total = len(failed_tests)
-            tests_to_retry = TestSet(isolated_tests=list(failed_tests))
+            stats.total = len(regressions)
+            tests_to_retry = TestSet(isolated_tests=list(regressions))
             retry_set = ResultSet()
             self._run_one_set(stats, retry_set, tests_to_retry)
             result_set.results.extend(retry_set.results)
-            failed_tests = json_results.failed_test_names(retry_set)
+            regressions = json_results.regressions(retry_set)
             retry_limit -= 1
 
         if retry_limit != self.args.retry_limit:
@@ -884,9 +884,10 @@ def _run_one_test(child, test_input):
     # but could come up when testing non-typ code as well.
     h.capture_output(divert=not child.passthrough)
     if child.has_expectations:
-      expected_results = child.expectations.expected_results_for(test_name)
+      expected_results, should_retry_on_failure = (child.expectations
+                                                   .expectations_for(test_name))
     else:
-      expected_results = {ResultType.Pass}
+      expected_results, should_retry_on_failure = {ResultType.Pass}, False
 
     ex_str = ''
     try:
@@ -901,7 +902,8 @@ def _run_one_test(child, test_input):
             # get here with a test we wanted to skip?
             h.restore_output()
             return Result(test_name, ResultType.Skip, started, 0,
-                          child.worker_num, unexpected=False, pid=pid)
+                          child.worker_num, expected=expected_results,
+                          unexpected=False, pid=pid)
 
         try:
             suite = child.loader.loadTestsFromName(test_name)
@@ -987,6 +989,7 @@ def _result_from_test_result(test_result, test_name, started, took, out, err,
             unexpected = actual not in expected_results
         else:
             unexpected = False
+            expected_results = {ResultType.Skip}
     elif test_result.expectedFailures:
         actual = ResultType.Failure
         code = 1

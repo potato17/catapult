@@ -66,9 +66,11 @@ from dashboard.api import sheriffs
 from dashboard.api import test_suites
 from dashboard.api import timeseries
 from dashboard.api import timeseries2
+from dashboard.api import warmup
 
 
 _URL_MAPPING = [
+    ('/_ah/warmup', warmup.WarmupHandler),
     ('/add_histograms', add_histograms.AddHistogramsHandler),
     ('/add_histograms/process', add_histograms.AddHistogramsProcessHandler),
     ('/add_histograms_queue', add_histograms_queue.AddHistogramsQueueHandler),
@@ -76,7 +78,6 @@ _URL_MAPPING = [
     ('/add_point_queue', add_point_queue.AddPointQueueHandler),
     ('/alerts', alerts.AlertsHandler),
     (r'/api/alerts', api_alerts.AlertsHandler),
-    (r'/api/alerts/(.*)', api_alerts.AlertsHandler),
     (r'/api/bugs/(.*)', bugs.BugsHandler),
     (r'/api/describe', describe.DescribeHandler),
     (r'/api/list_timeseries/(.*)', list_timeseries.ListTimeseriesHandler),

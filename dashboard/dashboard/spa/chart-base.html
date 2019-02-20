@@ -6,6 +6,7 @@ found in the LICENSE file.
 -->
 
 <link rel="import" href="/dashboard/spa/element-base.html">
+<link rel="import" href="/polymer-svg-template/polymer-svg-template.html">
 
 <dom-module id="chart-base">
   <template>
@@ -20,29 +21,15 @@ found in the LICENSE file.
         flex-grow: 1;
       }
 
-      #x_brush_handles {
+      #brush_handles {
         position: relative;
         height: 15px;
       }
 
-      #y_brush_handles {
-        position: relative;
-        width: 15px;
-      }
-
       .brush_handle {
-        position: absolute;
-      }
-
-      .x_brush_handle {
         cursor: ew-resize;
+        position: absolute;
         top: 0;
-        width: 100%;
-      }
-
-      .y_brush_handle {
-        right: 0;
-        cursor: ns-resize;
       }
 
       .brush_handle path {
@@ -74,22 +61,26 @@ found in the LICENSE file.
         stroke: #ccc;
       }
 
-      circle:hover {
-        opacity: 1;
-      }
-
       #main {
         position: relative;
+        --mouse: outside;
       }
 
       #tooltip {
-        background-color: var(--background-color);
-        border-style: solid;
-        border-width: 2px;
-        padding: 8px;
+        display: flex;
         position: absolute;
         white-space: pre;
-        z-index: var(--layer-menu);
+        z-index: var(--layer-menu, 100);
+      }
+
+      #tooltip table {
+        background-color: var(--background-color, white);
+        border-style: solid;
+        border-width: 2px;
+      }
+
+      #main:hover {
+        --mouse: inside;
       }
 
       #tooltip td {
@@ -97,7 +88,12 @@ found in the LICENSE file.
       }
 
       .icon {
+        /* UA stylesheet sets overflow:hidden for foreignObject, so prevent
+           overflow.
+        */
+        height: 100%;
         transform: translate(-12px, -12px);
+        width: 100%;
       }
 
       .icon iron-icon {
@@ -122,11 +118,11 @@ found in the LICENSE file.
     </svg>
 
     <div id="right">
-      <div id="x_brush_handles">
+      <div id="brush_handles">
         <template is="dom-repeat" items="[[xAxis.brushes]]" as="brush" index-as="brushIndex">
-          <div class="brush_handle x_brush_handle"
-               on-track="onTrackBrushHandle_"
-               style$="transform: translateX([[brush.xPct]]) translateX(-5px);">
+          <div class="brush_handle"
+              on-track="onTrackBrushHandle_"
+              style$="left: calc([[brush.xPct]] - 5px);">
             <svg
                 height$="[[brushPointSize_(brushSize)]]"
                 width$="[[brushSize]]"
@@ -138,7 +134,8 @@ found in the LICENSE file.
         </template>
       </div>
 
-      <div id="main">
+      <div id="main"
+          on-mousemove="onMouseMoveMain_">
         <svg
             width="100%"
             height$="[[graphHeight]]"
@@ -155,6 +152,16 @@ found in the LICENSE file.
             </template>
           </template>
 
+          <template is="dom-if" if="[[hasCursor_(yAxis)]]">
+            <line
+                x1="0"
+                x2="100%"
+                y1$="[[yAxis.cursor.pct]]"
+                y2$="[[yAxis.cursor.pct]]"
+                style$="stroke: [[yAxis.cursor.color]];">
+            </line>
+          </template>
+
           <template is="dom-if" if="[[xAxis.showTickLines]]">
             <template is="dom-repeat" items="[[xAxis.ticks]]" as="tick">
               <line
@@ -164,6 +171,16 @@ found in the LICENSE file.
                   y2="100%">
               </line>
             </template>
+          </template>
+
+          <template is="dom-if" if="[[hasCursor_(xAxis)]]">
+            <line
+                x1$="[[xAxis.cursor.pct]]"
+                x2$="[[xAxis.cursor.pct]]"
+                y1="0"
+                y2="100%"
+                style$="stroke: [[xAxis.cursor.color]];">
+            </line>
           </template>
 
           <template is="dom-repeat" items="[[antiBrushes_(xAxis.brushes)]]" as="antiBrush">
@@ -182,50 +199,6 @@ found in the LICENSE file.
                 width="100%"
                 height$="[[antiBrush.length]]">
             </rect>
-          </template>
-
-          <template is="dom-repeat" items="[[bars]]" as="bar" index-as="barIndex">
-            <svg
-                viewBox="0 0 100 100"
-                x="0"
-                y="0"
-                width="100%"
-                height="100%"
-                preserveAspectRatio="none">
-              <template is="dom-repeat" items="[[bar.data]]" as="datum" index-as="datumIndex">
-                <rect
-                    x$="[[datum.x]]"
-                    y$="[[datum.y]]"
-                    width$="[[datum.width]]"
-                    height$="[[datum.height]]"
-                    on-click="onBarClick_"
-                    on-mouseover="onBarMouseOver_"
-                    on-mouseout="onBarMouseOut_">
-                </rect>
-              </template>
-            </svg>
-          </template>
-
-          <template is="dom-repeat" items="[[columns]]" as="column" index-as="columnIndex">
-            <svg
-                viewBox="0 0 100 100"
-                x="0"
-                y="0"
-                width="100%"
-                height="100%"
-                preserveAspectRatio="none">
-              <template is="dom-repeat" items="[[column.data]]" as="datum" index-as="datumIndex">
-                <rect
-                    x$="[[datum.x]]"
-                    y$="[[datum.y]]"
-                    width$="[[datum.width]]"
-                    height$="[[datum.height]]"
-                    on-click="onColumnClick_"
-                    on-mouseover="onColumnMouseOver_"
-                    on-mouseout="onColumnMouseOut_">
-                </rect>
-              </template>
-            </svg>
           </template>
 
           <template is="dom-repeat" items="[[lines]]" as="line" index-as="lineIndex">
@@ -251,39 +224,15 @@ found in the LICENSE file.
               </template>
             </svg>
 
-            <template is="dom-if" if="[[dotRadius]]">
-              <template is="dom-repeat" items="[[line.data]]" as="datum" index-as="datumIndex">
-                <circle
-                    cx$="[[datum.xPct]]"
-                    cy$="[[datum.yPct]]"
-                    line-index$="[[lineIndex]]"
-                    r$="[[dotRadius]]"
-                    fill$="[[line.color]]"
-                    cursor$="[[dotCursor]]"
-                    opacity="0"
-                    on-click="onDotClick_"
-                    on-mouseover="onDotMouseOver_"
-                    on-mouseout="onDotMouseOut_">
-                </circle>
-              </template>
-            </template>
-
             <template is="dom-repeat" items="[[collectIcons_(line)]]" as="datum">
-              <!-- Icons are not on every datum, they're sparse. Save memory by
-                  reducing DOM nodes by collecting icons in a single separate
-                  dom-repeat.
-              -->
               <foreignObject
-                  x$="[[datum.xPct]]"
-                  y$="[[datum.yPct]]"
+                  x$="[[pct_(datum.xPct)]]"
+                  y$="[[pct_(datum.yPct)]]"
                   class="icon">
                 <body xmlns="http://www.w3.org/1999/xhtml">
                   <iron-icon
                       icon$="[[datum.icon]]"
-                      style$="color: [[datum.iconColor]]"
-                      on-click="onDotClick_"
-                      on-mouseover="onDotMouseOver_"
-                      on-mouseout="onDotMouseOut_">
+                      style$="color: [[datum.iconColor]]">
                   </iron-icon>
                 </body>
               </foreignObject>
@@ -292,18 +241,19 @@ found in the LICENSE file.
         </svg>
 
         <div id="tooltip"
-             hidden$="[[tooltipHidden_(tooltip)]]"
-             style$="left: [[tooltip.left]]; right: [[tooltip.right]]; top: [[tooltip.top]]; bottom: [[tooltip.bottom]]; border-color: [[tooltip.color]];">
-          <table>
-            <template is="dom-repeat" items="[[tooltip.rows]]" as="row" index-as="rowIndex">
-              <tr style$="color: [[row.color]]">
-                <td colspan$="[[row.colspan]]">[[row.name]]</td>
-                <template is="dom-if" if="[[!isEqual_(row.colspan, 2)]]">
-                  <td>[[row.value]]</td>
-                </template>
-              </tr>
-            </template>
-          </table>
+             style$="left: [[tooltip.left]]; right: [[tooltip.right]]; top: [[tooltip.top]]; bottom: [[tooltip.bottom]];">
+          <template is="dom-if" if="[[isTooltipShowing_(tooltip)]]">
+            <table style$="border-color: [[tooltip.color]];">
+              <template is="dom-repeat" items="[[tooltip.rows]]" as="row" index-as="rowIndex">
+                <tr style$="color: [[row.color]]">
+                  <td colspan$="[[row.colspan]]">[[row.name]]</td>
+                  <template is="dom-if" if="[[!isEqual_(row.colspan, 2)]]">
+                    <td>[[row.value]]</td>
+                  </template>
+                </tr>
+              </template>
+            </table>
+          </template>
         </div>
       </div>
 

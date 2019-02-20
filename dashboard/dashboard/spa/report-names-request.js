@@ -5,7 +5,7 @@
 'use strict';
 tr.exportTo('cp', () => {
   class ReportNamesRequest extends cp.RequestBase {
-    constructor(options) {
+    constructor(options = {}) {
       super(options);
       this.method_ = 'POST';
     }
@@ -18,12 +18,6 @@ tr.exportTo('cp', () => {
       return json.map(info => {
         return {...info, modified: new Date(info.modified)};
       });
-    }
-
-    async localhostResponse_() {
-      return [
-        {name: cp.ReportSection.DEFAULT_NAME, id: 0, modified: 0},
-      ];
     }
   }
 
